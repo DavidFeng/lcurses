@@ -35,7 +35,7 @@ local function tedit_forward(self)
     local cursor = self:cursor()
     if (cursor.x + self.start - 1 < string.len(self.text)) then
         if (cursor.x < self.size.x - 1) then
-            self:goto(cursor.x + 1, cursor.y)
+            self:goto_(cursor.x + 1, cursor.y)
         else
             self.start = self.start + 1
         end
@@ -46,7 +46,7 @@ local function tedit_backward(self)
     local cursor = self:cursor()
     if (cursor.x > 1 or self.start > 0) then
         if (cursor.x > 1) then
-            self:goto(cursor.x - 1, cursor.y)
+            self:goto_(cursor.x - 1, cursor.y)
         else
             self.start = self.start - 1
         end
@@ -103,7 +103,8 @@ function tedit:draw_window()
         end
     end
 
-    self:window():mvaddchstr(0, 0, line)
+    --self:window():mvaddchstr(0, 0, line)
+    self:window():mvaddstr(0, 0, 'hello 你好世界')
 end
 
 function tedit:handle_event(event)
@@ -125,12 +126,12 @@ function tedit:handle_event(event)
             self:set_selection(self.startsel, self.start + cursor.x)
         elseif (key == "Home") then
             self.start = 0
-            self:goto(1, 0)
+            self:goto_(1, 0)
         elseif (key == "End") then
             local len = string.len(self.text)
             local start = len - self.size.x + 2
             self.start = start < 0 and 0 or start
-            self:goto(len - self.start + 1, 0)
+            self:goto_(len - self.start + 1, 0)
         elseif (self.readonly) then
             -- stop processing keysif read only control
         elseif (key == "Backspace") then
@@ -148,7 +149,7 @@ function tedit:handle_event(event)
                 if (self.startsel <= self.start) then
                     self.start = self.startsel - 1
                 end
-                self:goto(self.startsel - self.start, 0)
+                self:goto_(self.startsel - self.start, 0)
             else
                 local idx = self.start + cursor.x - 1
                 local text = self.text
@@ -195,7 +196,7 @@ function tedit:set_text(text, startsel, endsel)
     else
         self.start = 0
     end
-    self:goto(len - self.start + 1, 0)
+    self:goto_(len - self.start + 1, 0)
 
     self:set_selection(startsel, endsel)
 end

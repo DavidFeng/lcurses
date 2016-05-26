@@ -1,5 +1,7 @@
 --require('bit')
 
+os.setlocale('en_US.UTF-8', 'all')
+
 curses = require('lcurses')
 
 local _topw = {}
@@ -9,7 +11,7 @@ curses.slk_init(2)
 local rip =    function(w, columns)
         table.insert(_topw, w)
         w:clear()
-        w:mvaddstr(0,0,'hello world '..table.getn(_topw))
+        w:mvaddstr(0,0,'世h界你好el你好你好lo w文orld 中 你好'..table.getn(_topw))
         w:noutrefresh()
     end
 curses.ripoffline(true, rip)
@@ -40,7 +42,7 @@ local function _main()
 
     -- top window with terminal attributes
     local top = curses.new_window(top_lines, curses.columns(), 0, 0)
-    local p_top = curses.new_panel(top)
+    --local p_top = curses.new_panel(top)
     top:leaveok()
     top:border()
     top:mvaddstr(1, 1, 'Terminal: '..curses.termname()..' - '..curses.longname())
@@ -68,7 +70,7 @@ local function _main()
     end
 
     local win = curses.new_window(curses.lines() - top_lines, curses.columns(), top_lines, 0)
-    local p_win = curses.new_panel(win)
+    --local p_win = curses.new_panel(win)
     win:keypad(true)
     win:nodelay(true)
 
@@ -76,7 +78,7 @@ local function _main()
 
     win:mvhline(10, 1, curses.ACS_HLINE, curses.columns() - 2)
 
-    curses.update_panels()
+    --curses.update_panels()
     curses.doupdate()
 
     ---[[
@@ -111,8 +113,8 @@ local function _main()
     --]]
 
     -- delete created panels
-    p_top:close()
-    p_win:close()
+    --p_top:close()
+    --p_win:close()
     -- delete created windows
     top:close()
     win:close()
@@ -124,7 +126,7 @@ local function _main()
     curses.doupdate()
 end
 
-local ok, msg = xpcall(_main, _TRACEBACK)
+local ok, msg = xpcall(_main, debug.traceback)
 
 curses.done()
 

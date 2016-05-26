@@ -34,6 +34,3 @@ curses.bottom_panel() (return panel)
 curses.top_panel() (return panel)
 
 --]]------------------------------------------------------------------------
-require('requireso')
-
-requireso('lcurses', 'luaopen_panel', true)

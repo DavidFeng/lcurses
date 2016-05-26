@@ -43,7 +43,7 @@ function tbutton:tbutton(bounds, label, command)
     self.command = command
     self.fcolor = _cui.make_color(_cui.COLOR_YELLOW, _cui.COLOR_GREEN) + _cui.A_BOLD
     self.ncolor = _cui.make_color(_cui.COLOR_WHITE, _cui.COLOR_BLUE) + _cui.A_BOLD
-    self:goto(math.floor((self.size.x - string.len(self.label)) / 2), 0)
+    self:goto_(math.floor((self.size.x - string.len(self.label)) / 2), 0)
 end
 
 function tbutton:draw_window()

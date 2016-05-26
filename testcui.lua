@@ -1,6 +1,13 @@
+os.setlocale('', 'all')
+
 curses = require('lcurses')
 require 'cui'
 require 'cui/ctrls'
+
+
+function table.getn(t)
+  return #t
+end
 
 local class = cui.class
 
@@ -32,7 +39,8 @@ function myview:draw_window()
         w:mvaddchstr(l, 0, line)
     end
     w:attrset(attr)
-    w:mvaddstr(0, 0, self.str)
+    --w:mvaddstr(0, 0, self.str)
+    w:mvaddstr(0, 0, '你好世界')
 end
 
 function myview:handle_event(event)
@@ -46,19 +54,19 @@ function myview:handle_event(event)
             self:set_state('cursor_visible', not self.state.cursor_visible)
         elseif (event.key == "Down") then
             local c = self:cursor():add(0, 1)
-            self:goto(c.x, c.y)
+            self:goto_(c.x, c.y)
             self:reset_cursor()
         elseif (event.key == "Up") then
             local c = self:cursor():add(0, -1)
-            self:goto(c.x, c.y)
+            self:jump(c.x, c.y)
             self:reset_cursor()
         elseif (event.key == "Left") then
             local c = self:cursor():add(-1, 0)
-            self:goto(c.x, c.y)
+            self:jump(c.x, c.y)
             self:reset_cursor()
         elseif (event.key == "Right") then
             local c = self:cursor():add(1, 0)
-            self:goto(c.x, c.y)
+            self:jump(c.x, c.y)
             self:reset_cursor()
         else
             self.str = self.str .. " " .. event.key
@@ -114,7 +122,7 @@ function mywindow:mywindow(bounds, title, num)
     self:insert(
         cui.tedit:new(
             cui.trect:new(1, 1, self.size.x - 1, 2),
-            'wefwefwefwef398493849',
+            '你好世界wefwefwefwef398493849',
             20,
             false
         )
@@ -181,7 +189,7 @@ function myapp:myapp()
 
 ---[[
     local r = cui.trect:new(1, 1, 27, 10)
-    desk:insert(cui.twindow:new(r, 'Window 1', 1))
+    desk:insert(cui.twindow:new(r, '你好世界Window 1', 1))
     r:move(2, 2) desk:insert(cui.twindow:new(r, 'Window 2', 2))
     r:move(2, 2) desk:insert(cui.twindow:new(r, 'Window 3', 3))
     r:move(2, 2) desk:insert(cui.twindow:new(r, 'Window 4', 4))
@@ -200,7 +208,7 @@ function myapp:handle_event(event)
     self.inherited.tapp.handle_event(self, event)
 
     if (event.type == cui.tevent.ev_command and event.command == cui.tevent.cm_new) then
-        self.desktop:insert(cui.twindow:new(r, 'Window', window_number))
+        self.desktop:insert(cui.twindow:new(r, '窗口 你好世界Window', window_number))
         r:move(2, 2) window_number = window_number + 1
     end
 end
@@ -225,11 +233,11 @@ local function run()
     app:close()
 end
 
-local ok, msg = xpcall(run, _TRACEBACK)
+local ok, msg = xpcall(run, debug.traceback)
 
 if (not ok) then
     if (not cui.isdone()) then
         cui.done()
     end
-    print(msg)
+    print('not ok: ', msg)
 end

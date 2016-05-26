@@ -94,12 +94,12 @@ function tscrollbar:set_position(position)
 
     if (limit > 1) then
         if (self.vertical) then
-            self:goto(0, r_position)
+            self:goto_(0, r_position)
         else
-            self:goto(r_position, 0)
+            self:goto_(r_position, 0)
         end
     else
-        self:goto(self.size.x - 1, self.size.y - 1)
+        self:goto_(self.size.x - 1, self.size.y - 1)
     end
 end
 

@@ -54,8 +54,9 @@ end
 function tmemory:draw_window()
     local w = self:window()
     local str = _cui.new_chstr(self.size.x)
-    local t, l = gcinfo()
-    local info = t..':'..l
+    --local t, l = gcinfo()
+    --local info = t..':'..l
+    local info = 'gcinfo'
     local pad = self.size.x - string.len(info)
     str:set_str(0, ' ', self.color, pad)
     str:set_str(pad, info, self.color)

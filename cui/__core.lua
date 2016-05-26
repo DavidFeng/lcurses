@@ -135,7 +135,10 @@ local class_metas = {
     "__concat", "__call", "__tostring"
 }
 
+unpack = table.unpack
+
 function class(name, ...)
+  local arg = table.pack(...)
     local __parent  = arg
     local members = {
         __parent    = __parent,
@@ -160,7 +163,7 @@ function class(name, ...)
         -- set metatable
         local o = setmetatable({}, mt)
         -- call constructor
-        o[name](o, unpack(arg))
+        o[name](o, ...)
         return o
     end
 
@@ -222,8 +225,9 @@ end
 
 --[[ load curses binding ]------------------------------------------------]]
 
-require('requirelib')
-local curses = requirelib('lcurses', 'luaopen_curses', true)
+--require('requirelib')
+--local curses = requirelib('lcurses', 'luaopen_curses', true)
+local curses = require('lcurses')
 
 
 --[[ local utils ]--------------------------------------------------------]]
@@ -244,8 +248,8 @@ end
 
 --[[ util: enums ]--------------------------------------------------------]]
 local function enum(t, list)
-    local index = t[list[table.getn(list)]] or 0
-    for i = 1, table.getn(list) - 1 do
+    local index = t[list[#(list)]] or 0
+    for i = 1, #(list) - 1 do
         t[list[i]] = i + index
     end
 end
@@ -1276,9 +1280,11 @@ end
 --[[ cursor handling ]----------------------------------------------------]]
 
 -- move cursor
-function tview:goto(x, y)
+function tview:goto_(x, y)
     self._cursor:assign(range(0, x, self.size.x-1), range(y, 0, self.size.y-1))
 end
+
+tview.jump = tview.goto_
 
 function tview:cursor()
     return self._cursor:clone()
@@ -1625,7 +1631,7 @@ end
 --[[ color assignment ]---------------------------------------------------]]
 function make_color(fg, bg)
     if (not _cui.has_colors()) then return 0 end
-    local n = table.getn(colors)
+    local n = #(colors)
     local c
 
     -- see if we have an existing color in list

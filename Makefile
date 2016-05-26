@@ -5,18 +5,17 @@ DISTDIR=$(HOME)/dist
 TMP=/tmp
 
 # change these to reflect your Lua installation
-LUAINC= /usr/include/lua5.1
-LUALIB= /usr/lib
-LUABIN= /usr/bin
-#LUABIN= /mingw/bin
+LUAINC= /home/david/david/skynet/3rd/lua
+
+CC = gcc
 
 # no need to change anything below here
 SHFLAGS= -shared
-CFLAGS= $(INCS) $(DEFS) $(WARN) $(SHFLAGS) -O2 -fPIC
-DEFS= # -DDEBUG
-WARN= -Wall -Werror -ansi #-ansi -pedantic -Wall
-INCS= -I$(LUAINC) #-I../curses
-LIBS= -L$(LUALIB) -lpanel -lcurses #../curses/panel.a ../curses/pdcurses.a -llualib -llua
+CFLAGS= -std=gnu99 $(INCS) $(DEFS) $(WARN) $(SHFLAGS) -O2 -fPIC
+DEFS=
+WARN= -Wall
+INCS= -I$(LUAINC)
+LIBS= -lpanel -lncursesw
 
 MYNAME= curses
 MYLIB= l$(MYNAME)
@@ -48,7 +47,7 @@ endif
 all: $T
 
 lua: lcurses.c lua.c
-	gcc -I. -DDEBUG -g -o lua lua.c lcurses.c -L. -llualib -llua -lpanel -lcurses -lm -ldl
+	gcc -I. -DDEBUG -g -o lua lua.c lcurses.c -L. -llualib -llua -lcursesw -lpanel -lm -ldl
 
 cui: $T
 	$(LUABIN)/lua -l$(MYNAME) -l$(MYNAME).panel testcui.lua

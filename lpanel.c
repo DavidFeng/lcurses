@@ -33,6 +33,7 @@ Changes:
 
 #include "lua.h"
 #include "lauxlib.h"
+#include "lualib.h"
 
 #include <panel.h>
 
@@ -286,9 +287,7 @@ static int lcp_panel_userptr(lua_State *L)
     return 1;
 }
 
-/* ======================================================= */
-#define EPF(name) { #name, lcp_ ## name },
-static const luaL_reg panellib[] =
+static const luaL_Reg panellib[] =
 {
     /* panel */
     { "close", lcp_del_panel },
@@ -314,46 +313,3 @@ static const luaL_reg panellib[] =
     {"__tostring",  lcp_tostring},
     {NULL, NULL}
 };
-
-#define ECF(name) { #name, lc_ ## name },
-static const luaL_reg cursespanellib[] =
-{
-    /* panel */
-    ECF(new_panel)
-    ECF(update_panels)
-    ECF(bottom_panel)
-    ECF(top_panel)
-
-    /* terminator */
-    {NULL, NULL}
-};
-
-/*
-** TODO: add upvalue table with lightuserdata keys and weak keyed
-** values containing WINDOWS and PANELS used in above functions
-*/
-
-int luaopen_panel(lua_State *L)
-{
-    /* metatable with used panels and associated windows */
-    lua_newtable(L);
-
-    /*
-    ** create new metatable for window objects
-    */
-    luaL_newmetatable(L, PANELMETA);
-    lua_pushliteral(L, "__index");
-    lua_pushvalue(L, -2);               /* push metatable */
-    lua_rawset(L, -3);                  /* metatable.__index = metatable */
-
-    lua_pushvalue(L, -2);               /* upvalue table */
-    luaL_openlib(L, NULL, panellib, 1);
-
-    lua_pop(L, 1);                      /* remove metatable from stack */
-
-    /*
-    ** create global table with curses methods/variables/constants
-    */
-    luaL_openlib(L, "curses", cursespanellib, 1);
-    return 1;
-}

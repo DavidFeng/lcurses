@@ -66,7 +66,7 @@ Notes:
 #include "lua.h"
 #include "lauxlib.h"
 
-#include <curses.h>
+#include <ncursesw/ncurses.h>
 #include <signal.h>
 
 /*
@@ -362,7 +362,7 @@ static chtype lc_checkch(lua_State *L, int index)
     if (lua_type(L, index) == LUA_TSTRING)
         return *lua_tostring(L, index);
 
-    luaL_typerror(L, index, "chtype");
+    luaL_error(L, "type error");
     /* never executes */
     return (chtype)0;
 }
@@ -417,21 +417,23 @@ static chstr* lc_checkchstr(lua_State *L, int index)
 /* create a new curses str */
 static int lc_new_chstr(lua_State *L)
 {
-    int len = luaL_checkint(L, 1);
+    int len = luaL_checkinteger(L, 1);
     chstr* ncs = chstr_new(L, len);
     memset(ncs->str, ' ', len*sizeof(chtype));
     return 1;
 }
+
+#define luaL_checkint (int)luaL_checkinteger
 
 /* change the contents of the chstr */
 static int chstr_set_str(lua_State *L)
 {
     chstr *cs = lc_checkchstr(L, 1);
     int index = luaL_checkint(L, 2);
-    const char *str = luaL_checkstring(L, 3);
-    int len = lua_strlen(L, 3);
+    size_t len;
+    const char *str = luaL_checklstring(L, 3, &len);
     int attr = (chtype)luaL_optnumber(L, 4, A_NORMAL);
-    int rep = luaL_optint(L, 5, 1);
+    int rep = luaL_optinteger(L, 5, 1);
     int i;
 
     if (index < 0)
@@ -465,7 +467,7 @@ static int chstr_set_ch(lua_State *L)
     int index = luaL_checkint(L, 2);
     chtype ch = lc_checkch(L, 3);
     int attr = (chtype)luaL_optnumber(L, 4, A_NORMAL);
-    int rep = luaL_optint(L, 5, 1);
+    int rep = luaL_optinteger(L, 5, 1);
 
     while (rep-- > 0)
     {
@@ -1333,6 +1335,8 @@ static int lcw_wechochar(lua_State *L)
 ** =======================================================
 */
 
+#define luaL_optint luaL_optinteger
+
 static int lcw_waddchnstr(lua_State *L)
 {
     WINDOW *w = lcw_check(L, 1);
@@ -1370,10 +1374,11 @@ static int lcw_mvwaddchnstr(lua_State *L)
 static int lcw_waddnstr(lua_State *L)
 {
     WINDOW *w = lcw_check(L, 1);
-    const char *str = luaL_checkstring(L, 2);
+    size_t len;
+    const char *str = luaL_checklstring(L, 2, &len);
     int n = luaL_optint(L, 3, -1);
 
-    if (n < 0) n = lua_strlen(L, 2);
+    if (n < 0) n = len;
 
     lua_pushboolean(L, B(waddnstr(w, CCHAR_CAST str, n)));
     return 1;
@@ -1384,10 +1389,11 @@ static int lcw_mvwaddnstr(lua_State *L)
     WINDOW *w = lcw_check(L, 1);
     int y = luaL_checkint(L, 2);
     int x = luaL_checkint(L, 3);
-    const char *str = luaL_checkstring(L, 4);
+    size_t len;
+    const char *str = luaL_checklstring(L, 4, &len);
     int n = luaL_optint(L, 5, -1);
 
-    if (n < 0) n = lua_strlen(L, 4);
+    if (n < 0) n = len;
 
     lua_pushboolean(L, B(mvwaddnstr(w, y, x, CCHAR_CAST str, n)));
     return 1;
@@ -1907,8 +1913,9 @@ static int lcw_mvwinsch(lua_State *L)
 static int lcw_winsstr(lua_State *L)
 {
     WINDOW *w = lcw_check(L, 1);
-    const char *str = luaL_checkstring(L, 2);
-    lua_pushboolean(L, B(winsnstr(w, CCHAR_CAST str, lua_strlen(L, 2))));
+    size_t len;
+    const char *str = luaL_checklstring(L, 2, &len);
+    lua_pushboolean(L, B(winsnstr(w, CCHAR_CAST str, len)));
     return 1;
 }
 
@@ -1917,8 +1924,9 @@ static int lcw_mvwinsstr(lua_State *L)
     WINDOW *w = lcw_check(L, 1);
     int y = luaL_checkint(L, 2);
     int x = luaL_checkint(L, 3);
-    const char *str = luaL_checkstring(L, 4);
-    lua_pushboolean(L, B(mvwinsnstr(w, y, x, CCHAR_CAST str, lua_strlen(L, 2))));
+    size_t len;
+    const char *str = luaL_checklstring(L, 4, &len);
+    lua_pushboolean(L, B(mvwinsnstr(w, y, x, CCHAR_CAST str, len)));
     return 1;
 }
 
@@ -2084,7 +2092,7 @@ LCT(isxdigit)
 ** =======================================================
 */
 /* chstr members */
-static const luaL_reg chstrlib[] =
+static const luaL_Reg chstrlib[] =
 {
     { "len",        chstr_len       },
     { "set_ch",     chstr_set_ch    },
@@ -2096,7 +2104,7 @@ static const luaL_reg chstrlib[] =
 };
 
 #define EWF(name) { #name, lcw_ ## name },
-static const luaL_reg windowlib[] =
+static const luaL_Reg windowlib[] =
 {
     /* window */
     { "close", lcw_delwin  },
@@ -2246,7 +2254,7 @@ static const luaL_reg windowlib[] =
 
 #define ECF(name) { #name, lc_ ## name },
 #define ETF(name) { #name, lca_ ## name },
-static const luaL_reg curseslib[] =
+static const luaL_Reg curseslib[] =
 {
     /* chstr helper function */
     { "new_chstr",      lc_new_chstr    },
@@ -2345,47 +2353,55 @@ static const luaL_reg curseslib[] =
     ETF(isupper)
     ETF(isxdigit)
 
+
+    /* panel */
+
+    {"new_panel",  lc_new_panel},
+    {"update_panels",  lc_update_panels},
+    {"bottom_panel",  lc_bottom_panel},
+    {"top_panel",  lc_top_panel},
+
     /* terminator */
     {NULL, NULL}
 };
 
-
 int luaopen_lcurses(lua_State *L)
 {
+
+/*
+** TODO: add upvalue table with lightuserdata keys and weak keyed
+** values containing WINDOWS and PANELS used in above functions
+*/
+
+    /*
+    ** create new metatable for window objects
+    */
+    luaL_newmetatable(L, PANELMETA);
+    lua_pushvalue(L, -1);
+    lua_setfield(L, -1, "__index");
+
+    luaL_newlibtable(L, panellib);
+    luaL_setfuncs(L, panellib, 1);
+
     /*
     ** create new metatable for window objects
     */
     luaL_newmetatable(L, WINDOWMETA);
-    lua_pushliteral(L, "__index");
-    lua_pushvalue(L, -2);               /* push metatable */
-    lua_rawset(L, -3);                  /* metatable.__index = metatable */
-    luaL_openlib(L, NULL, windowlib, 0);
-
-    lua_pop(L, 1);                      /* remove metatable from stack */
+    luaL_newlib(L, windowlib);
+    lua_setfield(L, -2, "__index");
 
     /*
     ** create new metatable for chstr objects
     */
     luaL_newmetatable(L, CHSTRMETA);
-    lua_pushliteral(L, "__index");
-    lua_pushvalue(L, -2);               /* push metatable */
-    lua_rawset(L, -3);                  /* metatable.__index = metatable */
-    luaL_openlib(L, NULL, chstrlib, 0);
+    luaL_newlib(L, chstrlib);
+    lua_setfield(L, -2, "__index");
 
-    lua_pop(L, 1);                      /* remove metatable from stack */
+    /* 上面的几个元表被自动丢弃 */
 
-
-    /*
-    ** create global table with curses methods/variables/constants
-    */
-    lua_newtable(L);
-    #if 0
-    lua_pushliteral(L, "curses");
-    lua_pushvalue(L, -2);
-    lua_settable(L, LUA_GLOBALSINDEX);
-    #endif
+    luaL_newlibtable(L, curseslib);
     lua_pushvalue(L, -1);
-    luaL_openlib(L, NULL, curseslib, 1);
+    luaL_setfuncs(L, curseslib, 1);
 
     return 1;
 }

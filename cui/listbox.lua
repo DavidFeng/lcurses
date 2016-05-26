@@ -136,7 +136,7 @@ function tlistbox:set_position(index)
         local item = index - top
         local colw = self.column_width
         local col = math.floor((item) / self.size.y) + 1
-        self:goto(col * (colw + 1) - colw, math.mod(item, self.size.y))
+        self:goto_(col * (colw + 1) - colw, math.mod(item, self.size.y))
     end
 
     -- update scrollbar

@@ -3,4 +3,4 @@
 assert(not cui, 'library already loaded!?')
 
 -- load the cui system
-require 'cui/__core.lua'
+require 'cui/__core'
