@@ -11,7 +11,7 @@ curses.slk_init(2)
 local rip =    function(w, columns)
         table.insert(_topw, w)
         w:clear()
-        w:mvaddstr(0,0,'世h界你好el你好你好lo w文orld 中 你好'..table.getn(_topw))
+        w:mvaddstr(0,0,'世h界你好el你好你好lo w文orld 中 你好')
         w:noutrefresh()
     end
 curses.ripoffline(true, rip)
