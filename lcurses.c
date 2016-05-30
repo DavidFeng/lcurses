@@ -2,61 +2,6 @@
 * Author    : Tiago Dionizio (tngd@mega.ist.utl.pt)                     *
 * Library   : lcurses - Lua 5 interface to the curses library           *
 *                                                                       *
-* Permission is hereby granted, free of charge, to any person obtaining *
-* a copy of this software and associated documentation files (the       *
-* "Software"), to deal in the Software without restriction, including   *
-* without limitation the rights to use, copy, modify, merge, publish,   *
-* distribute, sublicense, and/or sell copies of the Software, and to    *
-* permit persons to whom the Software is furnished to do so, subject to *
-* the following conditions:                                             *
-*                                                                       *
-* The above copyright notice and this permission notice shall be        *
-* included in all copies or substantial portions of the Software.       *
-*                                                                       *
-* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,       *
-* EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF    *
-* MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.*
-* IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY  *
-* CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,  *
-* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE     *
-* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                *
-************************************************************************/
-
-/************************************************************************
-$Id: lcurses.c,v 1.23 2004/08/29 20:22:05 tngd Exp $
-History:
-
-************************************************************************/
-
-/************************************************************************
-Wish-list:
-************************************************************************/
-
-/************************************************************************
-Notes:
-* when user presses a modifier key on WIN32, it seems that the program
-  freezes waiting for another keypress... probably waiting to do some
-  work on the modifiers and the (next) pressed key (normal key) acting
-  as a blocking operation even if delay settings are turned off
-
-  + solved. but now modifier keys will be returned on WIN32. shouldn't a
-  problem though, just ignore them.
-
-* printing control characters on unix will not produce printable
-  characters like WIN32 does. better use only 'isprint' characters and
-  ACS characters (curses characters)
-
-  + solved. to filter characters being output to the screen, set
-  curses.map_output(true). this will filter all characters where a
-  chtype or chstr is used
-
-  mostly for cui usage.
-
-* on WIN32 ALT keys need to be mapped, so to make sure you get the wanted
-  keys, execute curses.map_keyboard(true). only makes sense when using
-  keypad(true) and echo(false)
-
-  mostly for cui usage.
 ************************************************************************/
 
 #include <ctype.h>
@@ -66,42 +11,11 @@ Notes:
 #include "lua.h"
 #include "lauxlib.h"
 
+#include <wchar.h>
+
+#define _XOPEN_SOURCE_EXTENDED
 #include <ncursesw/ncurses.h>
 #include <signal.h>
-
-/*
-** =======================================================
-** known 'issues' with PDCURSES library...
-** =======================================================
-*/
-#if defined(PDCURSES)
-
-/* incorretcly defined, missing return value (OK) */
-/* in PDCURSES:
-#define nl()                    (SP->autocr = TRUE)
-#define nonl()                  (SP->autocr = FALSE)
-*/
-#undef nl
-#undef nonl
-#define nl()                    (SP->autocr = TRUE), OK
-#define nonl()                  (SP->autocr = FALSE), OK
-
-/* they are there... just not defined?? */
-extern int has_ic(void);
-extern int has_il(void);
-
-/* PDCURSES doesn't seem to define these */
-#if !defined(mvwgetnstr)
-#define mvwgetnstr(win,y,x,buf,n)  (wmove(win,y,x) == ERR ? ERR : wgetnstr(win,buf,n))
-#endif
-#if !defined(mvwhline)
-#define mvwhline(win,y,x,c,n)		(wmove(win,y,x) == ERR ? ERR : whline(win,c,n))
-#endif
-#if !defined(mvwvline)
-#define mvwvline(win,y,x,c,n)		(wmove(win,y,x) == ERR ? ERR : wvline(win,c,n))
-#endif
-
-#endif /* defined(PDCURSES) */
 
 /*
 ** =======================================================
@@ -122,15 +36,7 @@ static const char *RIPOFF_TABLE        = "curses:ripoffline";
 
 #define B(v) ((v == ERR) ? 0 : 1)
 
-/* pdcurses passes some variables as (char*) instead of
-** (const char*)... bummer */
-#if defined(PDCURSES)
-#define CCHAR_CAST (char*)
-#define CCHTYPE_CAST (chtype*)
-#else
-#define CCHAR_CAST
 #define CCHTYPE_CAST
-#endif
 
 /* ======================================================= */
 
@@ -207,100 +113,10 @@ static const char *RIPOFF_TABLE        = "curses:ripoffline";
     }
 
 
-#ifdef DEBUG
-
-#include <stdarg.h>
-int clog(char* f, ...)
-{
-    va_list args;
-    FILE *l;
-
-    va_start(args, f);
-    l = fopen("lcurses.log", "a");
-    vfprintf(l, f, args);
-    fclose(l);
-    va_end(args);
-    return 1;
-}
-
-#endif /* DEBUG */
-
-/* ascii map table
-** used on chstr:set and where a chstr is given as a parameter
-** if curses.map_output(true) is set */
-static chtype ascii_map[256];
-static bool map_output = FALSE;
-static void init_ascii_map();
-
-/* keyboard mapping. to make key association more consistent
-** between curses implementations (PDCURSES and ncurses atm) */
-static bool map_keyboard = FALSE;
-
-/* (un)set usage of output map table */
 static int lc_map_keyboard(lua_State *L)
 {
-    lua_pushboolean(L, map_keyboard);
-
-    if (!lua_isnoneornil(L, 1))
-    {
-        luaL_checktype(L, 1, LUA_TBOOLEAN);
-        map_keyboard = lua_toboolean(L, 1);
-    }
-
+    lua_pushboolean(L, 1);
     return 1;
-}
-
-/* keyboard mapping function, only active if map_keyboard = TRUE */
-static int map_getch(WINDOW *w)
-{
-#ifdef PDCURSES
-    static bool has_key = FALSE;
-    static int temp_key = 0;
-
-    int key;
-
-    if (map_keyboard && has_key)
-    {
-        has_key = FALSE;
-        return temp_key;
-    }
-
-    key = wgetch(w);
-
-    /* in case of error or not using key mapping, return the key */
-    if (key == ERR || !map_keyboard) return key;
-
-    if (key >= ALT_A && key <= ALT_Z)
-    {
-        has_key = TRUE;
-        temp_key = key - ALT_A + 'A';
-    }
-    else if (key >= ALT_0 && key <= ALT_9)
-    {
-        has_key = TRUE;
-        temp_key = key - ALT_0 + '0';
-    }
-    else switch (key)
-    {
-        case ALT_DEL:       temp_key = KEY_DC;      break;
-        case ALT_INS:       temp_key = KEY_IC;      break;
-        case ALT_HOME:      temp_key = KEY_HOME;    break;
-        case ALT_END:       temp_key = KEY_END;     break;
-        case ALT_PGUP:      temp_key = KEY_PPAGE;   break;
-        case ALT_PGDN:      temp_key = KEY_NPAGE;   break;
-        case ALT_UP:        temp_key = KEY_UP;      break;
-        case ALT_DOWN:      temp_key = KEY_DOWN;    break;
-        case ALT_RIGHT:     temp_key = KEY_RIGHT;   break;
-        case ALT_LEFT:      temp_key = KEY_LEFT;    break;
-        case ALT_BKSP:      temp_key = KEY_BACKSPACE; break;
-
-        default: return key;
-    }
-    has_key = TRUE;
-    return 27;
-#else
-    return wgetch(w);
-#endif
 }
 
 /*
@@ -352,26 +168,38 @@ static int lcw_tostring(lua_State *L)
 
 /*
 ** =======================================================
-** chtype handling
+** cchar_t handling
 ** =======================================================
 */
-static chtype lc_checkch(lua_State *L, int index)
+static cchar_t lc_checkch(lua_State *L, int index)
 {
-    if (lua_type(L, index) == LUA_TNUMBER)
-        return (chtype)luaL_checknumber(L, index);
-    if (lua_type(L, index) == LUA_TSTRING)
-        return *lua_tostring(L, index);
+  cchar_t r = {.attr = 0 };
+  if (lua_type(L, index) == LUA_TNUMBER)
+    r.chars[0] = luaL_checknumber(L, index);
+    return r;
+  if (lua_type(L, index) == LUA_TSTRING)
+    r.chars[0] = *lua_tostring(L, index);
+    return r;
 
-    luaL_error(L, "type error");
-    /* never executes */
-    return (chtype)0;
+  luaL_error(L, "type error");
+  /* never executes */
+  return r;
 }
 
-static chtype lc_optch(lua_State *L, int index, chtype def)
+static chtype lc_checkchtype(lua_State *L, int index)
 {
-    if (lua_isnoneornil(L, index))
-        return def;
-    return lc_checkch(L, index);
+  if (lua_type(L, index) == LUA_TNUMBER)
+    return luaL_checknumber(L, index);
+  if (lua_type(L, index) == LUA_TSTRING)
+    return *lua_tostring(L, index);;
+
+  luaL_error(L, "type error");
+  /* never executes */
+  return 0;
+}
+
+static chtype lc_opt_chtype(lua_State *L, int index, chtype def) {
+  return lua_isnoneornil(L, index) ? def : lc_checkchtype(L, index);
 }
 
 /*
@@ -382,26 +210,23 @@ static chtype lc_optch(lua_State *L, int index, chtype def)
 typedef struct
 {
     unsigned int len;
-    chtype str[1];
+    cchar_t str[1];
 } chstr;
-#define CHSTR_SIZE(len) (sizeof(chstr) + len * sizeof(chtype))
+#define CHSTR_SIZE(len) (sizeof(chstr) + len * sizeof(cchar_t))
 
 
 /* create new chstr object and leave it in the lua stack */
 static chstr* chstr_new(lua_State *L, int len)
 {
-    if (len < 1)
-    {
-        lua_pushliteral(L, "invalid chstr length");
-        lua_error(L);
-    }
-    {
-        chstr *cs = lua_newuserdata(L, CHSTR_SIZE(len));
-        luaL_getmetatable(L, CHSTRMETA);
-        lua_setmetatable(L, -2);
-        cs->len = len;
-        return cs;
-    }
+  if (len < 1) {
+    lua_pushliteral(L, "invalid chstr length");
+    lua_error(L);
+  }
+  chstr *cs = lua_newuserdata(L, CHSTR_SIZE(len));
+  luaL_getmetatable(L, CHSTRMETA);
+  lua_setmetatable(L, -2);
+  cs->len = len;
+  return cs;
 }
 
 /* get chstr from lua (convert if needed) */
@@ -417,88 +242,79 @@ static chstr* lc_checkchstr(lua_State *L, int index)
 /* create a new curses str */
 static int lc_new_chstr(lua_State *L)
 {
-    int len = luaL_checkinteger(L, 1);
-    chstr* ncs = chstr_new(L, len);
-    memset(ncs->str, ' ', len*sizeof(chtype));
-    return 1;
+  int len = luaL_checkinteger(L, 1);
+  chstr* ncs = chstr_new(L, len);
+  memset(ncs->str, 0, len * sizeof(cchar_t));
+  return 1;
 }
 
-#define luaL_checkint (int)luaL_checkinteger
-
 /* change the contents of the chstr */
-static int chstr_set_str(lua_State *L)
-{
-    chstr *cs = lc_checkchstr(L, 1);
-    int index = luaL_checkint(L, 2);
-    size_t len;
-    const char *str = luaL_checklstring(L, 3, &len);
-    int attr = (chtype)luaL_optnumber(L, 4, A_NORMAL);
-    int rep = luaL_optinteger(L, 5, 1);
-    int i;
+static int chstr_set_str(lua_State *L) {
+  chstr *cs = lc_checkchstr(L, 1);
+  int index = luaL_checkinteger(L, 2);
 
-    if (index < 0)
-        return 0;
+  attr_t attr = (attr_t)luaL_optnumber(L, 4, A_NORMAL);
 
-    while (rep-- > 0 && index <= cs->len)
-    {
-        if (index + len - 1 > cs->len)
-            len = cs->len - index + 1;
+  int i = 0;
 
-        if (map_output)
-        {
-            for (i = 0; i < len; ++i)
-                cs->str[index + i] = ascii_map[(unsigned char)str[i]] | attr;
-        }
-        else
-        {
-            for (i = 0; i < len; ++i)
-                cs->str[index + i] = str[i] | attr;
-        }
-        index += len;
+  if (index < 0) return 0;
+
+  int n = lua_gettop(L);
+  lua_getglobal(L, "utf8");
+  lua_getfield(L, -1, "codes");
+  lua_remove(L, -2); // remove global utf8
+  lua_pushvalue(L, n);
+  lua_call(L, 1, LUA_MULTRET);
+  while (1) {
+    lua_pushvalue(L, -3);
+    lua_insert(L, -3);
+    lua_pushvalue(L, -2);
+    lua_insert(L, -4);
+
+    lua_call(L, 2, LUA_MULTRET);
+    if (lua_gettop(L) == n + 2) {
+      lua_pop(L, 2);
+      break;
+    } else {
+      int c = lua_tointeger(L, -1);
+      cs->str[i].chars[0] = c;
+      cs->str[i++].attr = attr;
+      lua_remove(L, -1);
     }
+  }
 
-    return 0;
+  return 0;
 }
 
 /* change the contents of the chstr */
 static int chstr_set_ch(lua_State *L)
 {
-    chstr* cs = lc_checkchstr(L, 1);
-    int index = luaL_checkint(L, 2);
-    chtype ch = lc_checkch(L, 3);
-    int attr = (chtype)luaL_optnumber(L, 4, A_NORMAL);
-    int rep = luaL_optinteger(L, 5, 1);
+  chstr* cs = lc_checkchstr(L, 1);
+  int index = luaL_checkinteger(L, 2);
+  cchar_t ch = lc_checkch(L, 3);
+  int attr = (chtype)luaL_optnumber(L, 4, A_NORMAL);
 
-    while (rep-- > 0)
-    {
-        if (index < 0 || index >= cs->len)
-            return 0;
-
-        if (map_output && ch >= 0 && ch <= 255)
-            cs->str[index] = ascii_map[ch] | attr;
-        else
-            cs->str[index] = ch | attr;
-
-        ++index;
-    }
-    return 0;
+  cs->str[index] = ch;
+  cs->str[index].attr = attr;
+  return 0;
 }
 
 /* get information from the chstr */
 static int chstr_get(lua_State *L)
 {
     chstr* cs = lc_checkchstr(L, 1);
-    int index = luaL_checkint(L, 2);
-    chtype ch;
+    int index = luaL_checkinteger(L, 2);
+    cchar_t ch;
 
     if (index < 0 || index >= cs->len)
         return 0;
 
     ch = cs->str[index];
 
-    lua_pushnumber(L, ch & A_CHARTEXT);
-    lua_pushnumber(L, ch & A_ATTRIBUTES);
-    lua_pushnumber(L, ch & A_COLOR);
+    lua_pushnumber(L, ch.chars[0]);
+    attr_t a = ch.attr;
+    lua_pushnumber(L, a & A_ATTRIBUTES);
+    lua_pushnumber(L, a & A_COLOR);
     return 3;
 }
 
@@ -516,21 +332,7 @@ static int chstr_dup(lua_State *L)
     chstr *cs = lc_checkchstr(L, 1);
     chstr *ncs = chstr_new(L, cs->len);
 
-    memcpy(ncs->str, cs->str, CHSTR_SIZE(cs->len));
-    return 1;
-}
-
-/* (un)set usage of output map table */
-static int lc_map_output(lua_State *L)
-{
-    lua_pushboolean(L, map_output);
-
-    if (!lua_isnoneornil(L, 1))
-    {
-        luaL_checktype(L, 1, LUA_TBOOLEAN);
-        map_output = lua_toboolean(L, 1);
-    }
-
+    memcpy(ncs->str, cs->str, sizeof(cchar_t) * (cs->len));
     return 1;
 }
 
@@ -664,15 +466,6 @@ static int lc_initscr(lua_State *L)
     if (w == NULL)
         return 0;
 
-    #if defined(PDCURSES)
-    /* PDCurses does not enable echo at startup! */
-    echo();
-    /* so we don't hang up after user presses a
-       modifier key until a normal key is pressed */
-    PDC_return_key_modifiers(TRUE);
-    /*PDC_save_key_modifiers(TRUE);*/
-    #endif
-
     #if defined(NCURSES_VERSION)
     /* acomodate this value for cui keyboard handling */
     ESCDELAY = 0;
@@ -688,8 +481,6 @@ static int lc_initscr(lua_State *L)
 
     /* setup curses constants - curses.xxx numbers */
     register_curses_constants(L);
-    /* setup ascii map table */
-    init_ascii_map();
 
     /* install cleanup handler to help in debugging and screen trashing */
     atexit(cleanup);
@@ -733,9 +524,9 @@ LC_BOOL(has_colors)
 
 static int lc_init_pair(lua_State *L)
 {
-    short pair = luaL_checkint(L, 1);
-    short f = luaL_checkint(L, 2);
-    short b = luaL_checkint(L, 3);
+    short pair = luaL_checkinteger(L, 1);
+    short f = luaL_checkinteger(L, 2);
+    short b = luaL_checkinteger(L, 3);
 
     lua_pushboolean(L, B(init_pair(pair, f, b)));
     return 1;
@@ -743,7 +534,7 @@ static int lc_init_pair(lua_State *L)
 
 static int lc_pair_content(lua_State *L)
 {
-    short pair = luaL_checkint(L, 1);
+    short pair = luaL_checkinteger(L, 1);
     short f;
     short b;
     int ret = pair_content(pair, &f, &b);
@@ -761,7 +552,7 @@ LC_NUMBER2(COLOR_PAIRS, COLOR_PAIRS)
 
 static int lc_COLOR_PAIR(lua_State *L)
 {
-    int n = luaL_checkint(L, 1);
+    int n = luaL_checkinteger(L, 1);
     lua_pushnumber(L, COLOR_PAIR(n));
     return 1;
 }
@@ -786,7 +577,7 @@ static int lc_termattrs(lua_State *L)
     }
     else
     {
-        int a = luaL_checkint(L, 1);
+        int a = luaL_checkinteger(L, 1);
         lua_pushboolean(L, termattrs() & a);
     }
     return 1;
@@ -871,7 +662,7 @@ static int lc_ripoffline(lua_State *L)
 
 static int lc_curs_set(lua_State *L)
 {
-    int vis = luaL_checkint(L, 1);
+    int vis = luaL_checkinteger(L, 1);
     int state = curs_set(vis);
     if (state == ERR)
         return 0;
@@ -882,7 +673,7 @@ static int lc_curs_set(lua_State *L)
 
 static int lc_napms(lua_State *L)
 {
-    int ms = luaL_checkint(L, 1);
+    int ms = luaL_checkinteger(L, 1);
     lua_pushboolean(L, B(napms(ms)));
     return 1;
 }
@@ -904,10 +695,10 @@ LC_BOOLOK(flash)
 
 static int lc_newwin(lua_State *L)
 {
-    int nlines  = luaL_checkint(L, 1);
-    int ncols   = luaL_checkint(L, 2);
-    int begin_y = luaL_checkint(L, 3);
-    int begin_x = luaL_checkint(L, 4);
+    int nlines  = luaL_checkinteger(L, 1);
+    int ncols   = luaL_checkinteger(L, 2);
+    int begin_y = luaL_checkinteger(L, 3);
+    int begin_x = luaL_checkinteger(L, 4);
 
     lcw_new(L, newwin(nlines, ncols, begin_y, begin_x));
     return 1;
@@ -927,8 +718,8 @@ static int lcw_delwin(lua_State *L)
 static int lcw_mvwin(lua_State *L)
 {
     WINDOW *w = lcw_check(L, 1);
-    int y = luaL_checkint(L, 2);
-    int x = luaL_checkint(L, 3);
+    int y = luaL_checkinteger(L, 2);
+    int x = luaL_checkinteger(L, 3);
     lua_pushboolean(L, B(mvwin(w, y, x)));
     return 1;
 }
@@ -936,10 +727,10 @@ static int lcw_mvwin(lua_State *L)
 static int lcw_subwin(lua_State *L)
 {
     WINDOW *orig = lcw_check(L, 1);
-    int nlines  = luaL_checkint(L, 2);
-    int ncols   = luaL_checkint(L, 3);
-    int begin_y = luaL_checkint(L, 4);
-    int begin_x = luaL_checkint(L, 5);
+    int nlines  = luaL_checkinteger(L, 2);
+    int ncols   = luaL_checkinteger(L, 3);
+    int begin_y = luaL_checkinteger(L, 4);
+    int begin_x = luaL_checkinteger(L, 5);
 
     lcw_new(L, subwin(orig, nlines, ncols, begin_y, begin_x));
     return 1;
@@ -948,10 +739,10 @@ static int lcw_subwin(lua_State *L)
 static int lcw_derwin(lua_State *L)
 {
     WINDOW *orig = lcw_check(L, 1);
-    int nlines  = luaL_checkint(L, 2);
-    int ncols   = luaL_checkint(L, 3);
-    int begin_y = luaL_checkint(L, 4);
-    int begin_x = luaL_checkint(L, 5);
+    int nlines  = luaL_checkinteger(L, 2);
+    int ncols   = luaL_checkinteger(L, 3);
+    int begin_y = luaL_checkinteger(L, 4);
+    int begin_x = luaL_checkinteger(L, 5);
 
     lcw_new(L, derwin(orig, nlines, ncols, begin_y, begin_x));
     return 1;
@@ -960,8 +751,8 @@ static int lcw_derwin(lua_State *L)
 static int lcw_mvderwin(lua_State *L)
 {
     WINDOW *w = lcw_check(L, 1);
-    int par_y = luaL_checkint(L, 2);
-    int par_x = luaL_checkint(L, 3);
+    int par_y = luaL_checkinteger(L, 2);
+    int par_x = luaL_checkinteger(L, 3);
     lua_pushboolean(L, B(mvderwin(w, par_y, par_x)));
     return 1;
 }
@@ -1014,8 +805,8 @@ LCW_BOOLOK(redrawwin)
 static int lcw_wredrawln(lua_State *L)
 {
     WINDOW *w = lcw_check(L, 1);
-    int beg_line = luaL_checkint(L, 2);
-    int num_lines = luaL_checkint(L, 3);
+    int beg_line = luaL_checkinteger(L, 2);
+    int num_lines = luaL_checkinteger(L, 3);
     lua_pushboolean(L, B(wredrawln(w, beg_line, num_lines)));
     return 1;
 }
@@ -1031,8 +822,8 @@ LC_BOOLOK(doupdate)
 static int lcw_wmove(lua_State *L)
 {
     WINDOW *w = lcw_check(L, 1);
-    int y = luaL_checkint(L, 2);
-    int x = luaL_checkint(L, 3);
+    int y = luaL_checkinteger(L, 2);
+    int x = luaL_checkinteger(L, 3);
     lua_pushboolean(L, B(wmove(w, y, x)));
     return 1;
 }
@@ -1046,7 +837,7 @@ static int lcw_wmove(lua_State *L)
 static int lcw_wscrl(lua_State *L)
 {
     WINDOW *w = lcw_check(L, 1);
-    int n = luaL_checkint(L, 2);
+    int n = luaL_checkinteger(L, 2);
     lua_pushboolean(L, B(wscrl(w, n)));
     return 1;
 }
@@ -1076,8 +867,8 @@ static int lcw_touch(lua_State *L)
 static int lcw_touchline(lua_State *L)
 {
     WINDOW *w = lcw_check(L, 1);
-    int y = luaL_checkint(L, 2);
-    int n = luaL_checkint(L, 3);
+    int y = luaL_checkinteger(L, 2);
+    int n = luaL_checkinteger(L, 3);
     int changed;
     if (lua_isnoneornil(L, 4))
         changed = TRUE;
@@ -1090,7 +881,7 @@ static int lcw_touchline(lua_State *L)
 static int lcw_is_linetouched(lua_State *L)
 {
     WINDOW *w = lcw_check(L, 1);
-    int line = luaL_checkint(L, 2);
+    int line = luaL_checkinteger(L, 2);
     lua_pushboolean(L, is_linetouched(w, line));
     return 1;
 }
@@ -1157,14 +948,15 @@ static int lcw_getmaxyx(lua_State *L)
 static int lcw_wborder(lua_State *L)
 {
     WINDOW *w = lcw_check(L, 1);
-    chtype ls = lc_optch(L, 2, 0);
-    chtype rs = lc_optch(L, 3, 0);
-    chtype ts = lc_optch(L, 4, 0);
-    chtype bs = lc_optch(L, 5, 0);
-    chtype tl = lc_optch(L, 6, 0);
-    chtype tr = lc_optch(L, 7, 0);
-    chtype bl = lc_optch(L, 8, 0);
-    chtype br = lc_optch(L, 9, 0);
+
+    chtype ls = lc_opt_chtype(L, 2, 0);
+    chtype rs = lc_opt_chtype(L, 3, 0);
+    chtype ts = lc_opt_chtype(L, 4, 0);
+    chtype bs = lc_opt_chtype(L, 5, 0);
+    chtype tl = lc_opt_chtype(L, 6, 0);
+    chtype tr = lc_opt_chtype(L, 7, 0);
+    chtype bl = lc_opt_chtype(L, 8, 0);
+    chtype br = lc_opt_chtype(L, 9, 0);
 
     lua_pushnumber(L, B(wborder(w, ls, rs, ts, bs, tl, tr, bl, br)));
     return 1;
@@ -1173,8 +965,8 @@ static int lcw_wborder(lua_State *L)
 static int lcw_box(lua_State *L)
 {
     WINDOW *w = lcw_check(L, 1);
-    chtype verch = lc_checkch(L, 2);
-    chtype horch = lc_checkch(L, 3);
+    chtype verch = lc_checkchtype(L, 2);
+    chtype horch = lc_checkchtype(L, 3);
 
     lua_pushnumber(L, B(box(w, verch, horch)));
     return 1;
@@ -1183,8 +975,8 @@ static int lcw_box(lua_State *L)
 static int lcw_whline(lua_State *L)
 {
     WINDOW *w = lcw_check(L, 1);
-    chtype ch = lc_checkch(L, 2);
-    int n = luaL_checkint(L, 3);
+    chtype ch = lc_checkchtype(L, 2);
+    int n = luaL_checkinteger(L, 3);
 
     lua_pushnumber(L, B(whline(w, ch, n)));
     return 1;
@@ -1193,8 +985,8 @@ static int lcw_whline(lua_State *L)
 static int lcw_wvline(lua_State *L)
 {
     WINDOW *w = lcw_check(L, 1);
-    chtype ch = lc_checkch(L, 2);
-    int n = luaL_checkint(L, 3);
+    chtype ch = lc_checkchtype(L, 2);
+    int n = luaL_checkinteger(L, 3);
 
     lua_pushnumber(L, B(wvline(w, ch, n)));
     return 1;
@@ -1204,10 +996,10 @@ static int lcw_wvline(lua_State *L)
 static int lcw_mvwhline(lua_State *L)
 {
     WINDOW *w = lcw_check(L, 1);
-    int y = luaL_checkint(L, 2);
-    int x = luaL_checkint(L, 3);
-    chtype ch = lc_checkch(L, 4);
-    int n = luaL_checkint(L, 5);
+    int y = luaL_checkinteger(L, 2);
+    int x = luaL_checkinteger(L, 3);
+    chtype ch = lc_checkchtype(L, 4);
+    int n = luaL_checkinteger(L, 5);
 
     lua_pushnumber(L, B(mvwhline(w, y, x, ch, n)));
     return 1;
@@ -1216,10 +1008,10 @@ static int lcw_mvwhline(lua_State *L)
 static int lcw_mvwvline(lua_State *L)
 {
     WINDOW *w = lcw_check(L, 1);
-    int y = luaL_checkint(L, 2);
-    int x = luaL_checkint(L, 3);
-    chtype ch = lc_checkch(L, 4);
-    int n = luaL_checkint(L, 5);
+    int y = luaL_checkinteger(L, 2);
+    int x = luaL_checkinteger(L, 3);
+    chtype ch = lc_checkchtype(L, 4);
+    int n = luaL_checkinteger(L, 5);
 
     lua_pushnumber(L, B(mvwvline(w, y, x, ch, n)));
     return 1;
@@ -1243,18 +1035,18 @@ LCW_BOOLOK(wclrtoeol)
 */
 static int lc_slk_init(lua_State *L)
 {
-    int fmt = luaL_checkint(L, 1);
+    int fmt = luaL_checkinteger(L, 1);
     lua_pushboolean(L, B(slk_init(fmt)));
     return 1;
 }
 
 static int lc_slk_set(lua_State *L)
 {
-    int labnum = luaL_checkint(L, 1);
+    int labnum = luaL_checkinteger(L, 1);
     const char* label = luaL_checkstring(L, 2);
-    int fmt = luaL_checkint(L, 3);
+    int fmt = luaL_checkinteger(L, 3);
 
-    lua_pushboolean(L, B(slk_set(labnum, CCHAR_CAST label, fmt)));
+    lua_pushboolean(L, B(slk_set(labnum, label, fmt)));
     return 1;
 }
 
@@ -1263,7 +1055,7 @@ LC_BOOLOK(slk_noutrefresh)
 
 static int lc_slk_label(lua_State *L)
 {
-    int labnum = luaL_checkint(L, 1);
+    int labnum = luaL_checkinteger(L, 1);
     lua_pushstring(L, slk_label(labnum));
     return 1;
 }
@@ -1274,21 +1066,21 @@ LC_BOOLOK(slk_touch)
 
 static int lc_slk_attron(lua_State *L)
 {
-    chtype attrs = lc_checkch(L, 1);
+    chtype attrs = lc_checkchtype(L, 1);
     lua_pushboolean(L, B(slk_attron(attrs)));
     return 1;
 }
 
 static int lc_slk_attroff(lua_State *L)
 {
-    chtype attrs = lc_checkch(L, 1);
+    chtype attrs = lc_checkchtype(L, 1);
     lua_pushboolean(L, B(slk_attroff(attrs)));
     return 1;
 }
 
 static int lc_slk_attrset(lua_State *L)
 {
-    chtype attrs = lc_checkch(L, 1);
+    chtype attrs = lc_checkchtype(L, 1);
     lua_pushboolean(L, B(slk_attrset(attrs)));
     return 1;
 }
@@ -1302,8 +1094,7 @@ static int lc_slk_attrset(lua_State *L)
 static int lcw_waddch(lua_State *L)
 {
     WINDOW *w = lcw_check(L, 1);
-    chtype ch = lc_checkch(L, 2);
-    if (map_output && ch >= 0 && ch < 256) ch = ascii_map[ch];
+    chtype ch = lc_checkchtype(L, 2);
     lua_pushboolean(L, B(waddch(w, ch)));
     return 1;
 }
@@ -1311,19 +1102,19 @@ static int lcw_waddch(lua_State *L)
 static int lcw_mvwaddch(lua_State *L)
 {
     WINDOW *w = lcw_check(L, 1);
-    int y = luaL_checkint(L, 2);
-    int x = luaL_checkint(L, 3);
-    chtype ch = lc_checkch(L, 4);
+    int y = luaL_checkinteger(L, 2);
+    int x = luaL_checkinteger(L, 3);
+    chtype ch = lc_checkchtype(L, 4);
 
-    if (map_output && ch >= 0 && ch < 256) ch = ascii_map[ch];
     lua_pushboolean(L, B(mvwaddch(w, y, x, ch)));
+    //lua_pushboolean(L, 1);
     return 1;
 }
 
 static int lcw_wechochar(lua_State *L)
 {
     WINDOW *w = lcw_check(L, 1);
-    chtype ch = lc_checkch(L, 2);
+    chtype ch = lc_checkchtype(L, 2);
 
     lua_pushboolean(L, B(wechochar(w, ch)));
     return 1;
@@ -1335,33 +1126,32 @@ static int lcw_wechochar(lua_State *L)
 ** =======================================================
 */
 
-#define luaL_optint luaL_optinteger
-
 static int lcw_waddchnstr(lua_State *L)
 {
     WINDOW *w = lcw_check(L, 1);
-    int n = luaL_optint(L, 3, -1);
+    int n = luaL_optinteger(L, 3, -1);
     chstr *cs = lc_checkchstr(L, 2);
 
     if (n < 0 || n > cs->len)
         n = cs->len;
 
-    lua_pushboolean(L, B(waddchnstr(w, cs->str, n)));
+    lua_pushboolean(L, B(wadd_wchnstr(w, cs->str, n)));
     return 1;
 }
 
 static int lcw_mvwaddchnstr(lua_State *L)
 {
     WINDOW *w = lcw_check(L, 1);
-    int y = luaL_checkint(L, 2);
-    int x = luaL_checkint(L, 3);
-    int n = luaL_optint(L, 5, -1);
+    int y = luaL_checkinteger(L, 2);
+    int x = luaL_checkinteger(L, 3);
+    int n = luaL_optinteger(L, 5, -1);
     chstr *cs = lc_checkchstr(L, 4);
 
     if (n < 0 || n > cs->len)
         n = cs->len;
 
-    lua_pushboolean(L, B(mvwaddchnstr(w, y, x, cs->str, n)));
+    lua_pushboolean(L, B(mvwadd_wchnstr(w, y, x, cs->str, n)));
+    // debug here
     return 1;
 }
 
@@ -1376,26 +1166,26 @@ static int lcw_waddnstr(lua_State *L)
     WINDOW *w = lcw_check(L, 1);
     size_t len;
     const char *str = luaL_checklstring(L, 2, &len);
-    int n = luaL_optint(L, 3, -1);
+    int n = luaL_optinteger(L, 3, -1);
 
     if (n < 0) n = len;
 
-    lua_pushboolean(L, B(waddnstr(w, CCHAR_CAST str, n)));
+    lua_pushboolean(L, B(waddnstr(w, str, n)));
     return 1;
 }
 
 static int lcw_mvwaddnstr(lua_State *L)
 {
     WINDOW *w = lcw_check(L, 1);
-    int y = luaL_checkint(L, 2);
-    int x = luaL_checkint(L, 3);
+    int y = luaL_checkinteger(L, 2);
+    int x = luaL_checkinteger(L, 3);
     size_t len;
     const char *str = luaL_checklstring(L, 4, &len);
-    int n = luaL_optint(L, 5, -1);
+    int n = luaL_optinteger(L, 5, -1);
 
     if (n < 0) n = len;
 
-    lua_pushboolean(L, B(mvwaddnstr(w, y, x, CCHAR_CAST str, n)));
+    lua_pushboolean(L, B(mvwaddnstr(w, y, x, str, n)));
     return 1;
 }
 
@@ -1408,7 +1198,7 @@ static int lcw_mvwaddnstr(lua_State *L)
 static int lcw_wbkgdset(lua_State *L)
 {
     WINDOW *w = lcw_check(L, 1);
-    chtype ch = lc_checkch(L, 2);
+    chtype ch = lc_checkchtype(L, 2);
     wbkgdset(w, ch);
     return 0;
 }
@@ -1416,7 +1206,7 @@ static int lcw_wbkgdset(lua_State *L)
 static int lcw_wbkgd(lua_State *L)
 {
     WINDOW *w = lcw_check(L, 1);
-    chtype ch = lc_checkch(L, 2);
+    chtype ch = lc_checkchtype(L, 2);
     lua_pushboolean(L, B(wbkgd(w, ch)));
     return 1;
 }
@@ -1463,7 +1253,7 @@ static int lc_raw(lua_State *L)
 
 static int lc_halfdelay(lua_State *L)
 {
-    int tenths = luaL_checkint(L, 1);
+    int tenths = luaL_checkinteger(L, 1);
     lua_pushboolean(L, B(halfdelay(tenths)));
     return 1;
 }
@@ -1503,7 +1293,7 @@ static int lcw_nodelay(lua_State *L)
 static int lcw_timeout(lua_State *L)
 {
     WINDOW *w = lcw_check(L, 1);
-    int delay = luaL_checkint(L, 2);
+    int delay = luaL_checkinteger(L, 2);
     wtimeout(w, delay);
     return 0;
 }
@@ -1541,13 +1331,8 @@ static int lcw_clearok(lua_State *L)
 
 static int lcw_idlok(lua_State *L)
 {
-#ifndef PDCURSES
     WINDOW *w = lcw_check(L, 1);
     bool bf = lua_toboolean(L, 2);
-#else
-    lcw_check(L, 1);
-    lua_toboolean(L, 2);
-#endif
     lua_pushboolean(L, B(idlok(w, bf)));
     return 1;
 }
@@ -1570,14 +1355,9 @@ static int lcw_scrollok(lua_State *L)
 
 static int lcw_idcok(lua_State *L)
 {
-#ifndef PDCURSES
     WINDOW *w = lcw_check(L, 1);
     bool bf = lua_toboolean(L, 2);
     idcok(w, bf);
-#else
-    lcw_check(L, 1);
-    lua_toboolean(L, 2);
-#endif
     return 0;
 }
 
@@ -1592,8 +1372,8 @@ static int lcw_immedok(lua_State *L)
 static int lcw_wsetscrreg(lua_State *L)
 {
     WINDOW *w = lcw_check(L, 1);
-    int top = luaL_checkint(L, 2);
-    int bot = luaL_checkint(L, 3);
+    int top = luaL_checkinteger(L, 2);
+    int bot = luaL_checkinteger(L, 3);
     lua_pushboolean(L, B(wsetscrreg(w, top, bot)));
     return 1;
 }
@@ -1626,18 +1406,13 @@ static int lcw_copywin(lua_State *L)
 {
     WINDOW *srcwin = lcw_check(L, 1);
     WINDOW *dstwin = lcw_check(L, 2);
-    int sminrow = luaL_checkint(L, 3);
-    int smincol = luaL_checkint(L, 4);
-    int dminrow = luaL_checkint(L, 5);
-    int dmincol = luaL_checkint(L, 6);
-    int dmaxrow = luaL_checkint(L, 7);
-    int dmaxcol = luaL_checkint(L, 8);
+    int sminrow = luaL_checkinteger(L, 3);
+    int smincol = luaL_checkinteger(L, 4);
+    int dminrow = luaL_checkinteger(L, 5);
+    int dmincol = luaL_checkinteger(L, 6);
+    int dmaxrow = luaL_checkinteger(L, 7);
+    int dmaxcol = luaL_checkinteger(L, 8);
     int overlay = lua_toboolean(L, 9);
-
-    #ifdef PDCURSES
-    /* PDCURSES behaves weird.... why!? */
-    ++dmaxcol,++dmaxrow;
-    #endif
 
     lua_pushboolean(L, B(copywin(srcwin, dstwin, sminrow,
         smincol, dminrow, dmincol, dmaxrow, dmaxcol, overlay)));
@@ -1660,14 +1435,14 @@ static int lc_unctrl(lua_State *L)
 
 static int lc_keyname(lua_State *L)
 {
-    int c = luaL_checkint(L, 1);
+    int c = luaL_checkinteger(L, 1);
     lua_pushstring(L, keyname(c));
     return 1;
 }
 
 static int lc_delay_output(lua_State *L)
 {
-    int ms = luaL_checkint(L, 1);
+    int ms = luaL_checkinteger(L, 1);
     lua_pushboolean(L, B(delay_output(ms)));
     return 1;
 }
@@ -1689,8 +1464,8 @@ LCW_BOOLOK(wdelch)
 static int lcw_mvwdelch(lua_State *L)
 {
     WINDOW *w = lcw_check(L, 1);
-    int y = luaL_checkint(L, 2);
-    int x = luaL_checkint(L, 3);
+    int y = luaL_checkinteger(L, 2);
+    int x = luaL_checkinteger(L, 3);
 
     lua_pushboolean(L, B(mvwdelch(w, y, x)));
     return 1;
@@ -1708,7 +1483,7 @@ LCW_BOOLOK(winsertln)
 static int lcw_winsdelln(lua_State *L)
 {
     WINDOW *w = lcw_check(L, 1);
-    int n = luaL_checkint(L, 2);
+    int n = luaL_checkinteger(L, 2);
     lua_pushboolean(L, B(winsdelln(w, n)));
     return 1;
 }
@@ -1722,7 +1497,7 @@ static int lcw_winsdelln(lua_State *L)
 static int lcw_wgetch(lua_State *L)
 {
     WINDOW *w = lcw_check(L, 1);
-    int c = map_getch(w);
+    int c = wgetch(w);
 
     if (c == ERR) return 0;
 
@@ -1733,13 +1508,13 @@ static int lcw_wgetch(lua_State *L)
 static int lcw_mvwgetch(lua_State *L)
 {
     WINDOW *w = lcw_check(L, 1);
-    int y = luaL_checkint(L, 2);
-    int x = luaL_checkint(L, 3);
+    int y = luaL_checkinteger(L, 2);
+    int x = luaL_checkinteger(L, 3);
     int c;
 
     if (wmove(w, y, x) == ERR) return 0;
 
-    c = map_getch(w);
+    c = wgetch(w);
 
     if (c == ERR) return 0;
 
@@ -1749,7 +1524,7 @@ static int lcw_mvwgetch(lua_State *L)
 
 static int lc_ungetch(lua_State *L)
 {
-    int c = luaL_checkint(L, 1);
+    int c = luaL_checkinteger(L, 1);
     lua_pushboolean(L, B(ungetch(c)));
     return 1;
 }
@@ -1763,7 +1538,7 @@ static int lc_ungetch(lua_State *L)
 static int lcw_wgetnstr(lua_State *L)
 {
     WINDOW *w = lcw_check(L, 1);
-    int n = luaL_optint(L, 2, 0);
+    int n = luaL_optinteger(L, 2, 0);
     char buf[LUAL_BUFFERSIZE];
 
     if (n == 0 || n >= LUAL_BUFFERSIZE) n = LUAL_BUFFERSIZE - 1;
@@ -1777,9 +1552,9 @@ static int lcw_wgetnstr(lua_State *L)
 static int lcw_mvwgetnstr(lua_State *L)
 {
     WINDOW *w = lcw_check(L, 1);
-    int y = luaL_checkint(L, 2);
-    int x = luaL_checkint(L, 3);
-    int n = luaL_optint(L, 4, -1);
+    int y = luaL_checkinteger(L, 2);
+    int x = luaL_checkinteger(L, 3);
+    int n = luaL_optinteger(L, 4, -1);
     char buf[LUAL_BUFFERSIZE];
 
     if (n == 0 || n >= LUAL_BUFFERSIZE) n = LUAL_BUFFERSIZE - 1;
@@ -1806,8 +1581,8 @@ static int lcw_winch(lua_State *L)
 static int lcw_mvwinch(lua_State *L)
 {
     WINDOW *w = lcw_check(L, 1);
-    int y = luaL_checkint(L, 2);
-    int x = luaL_checkint(L, 3);
+    int y = luaL_checkinteger(L, 2);
+    int x = luaL_checkinteger(L, 3);
     lua_pushnumber(L, mvwinch(w, y, x));
     return 1;
 }
@@ -1821,10 +1596,10 @@ static int lcw_mvwinch(lua_State *L)
 static int lcw_winchnstr(lua_State *L)
 {
     WINDOW *w = lcw_check(L, 1);
-    int n = luaL_checkint(L, 2);
+    int n = luaL_checkinteger(L, 2);
     chstr *cs = chstr_new(L, n);
 
-    if (winchnstr(w, cs->str, n) == ERR)
+    if (wadd_wchnstr(w, cs->str, n) == ERR)
         return 0;
 
     return 1;
@@ -1833,12 +1608,17 @@ static int lcw_winchnstr(lua_State *L)
 static int lcw_mvwinchnstr(lua_State *L)
 {
     WINDOW *w = lcw_check(L, 1);
-    int y = luaL_checkint(L, 2);
-    int x = luaL_checkint(L, 3);
-    int n = luaL_checkint(L, 4);
+    int y = luaL_checkinteger(L, 2);
+    int x = luaL_checkinteger(L, 3);
+    int n = luaL_checkinteger(L, 4);
     chstr *cs = chstr_new(L, n);
 
-    if (mvwinchnstr(w, y, x, cs->str, n) == ERR)
+    wchar_t *ws = malloc(sizeof(wchar_t) * n);
+    for(int i = 0; i < cs->len; i++) {
+      *ws++ = cs->str[i].chars[0];
+    }
+
+    if (mvwins_nwstr(w, y, x, ws, n) == ERR)
         return 0;
 
     return 1;
@@ -1853,7 +1633,7 @@ static int lcw_mvwinchnstr(lua_State *L)
 static int lcw_winnstr(lua_State *L)
 {
     WINDOW *w = lcw_check(L, 1);
-    int n = luaL_checkint(L, 2);
+    int n = luaL_checkinteger(L, 2);
     char buf[LUAL_BUFFERSIZE];
 
     if (n >= LUAL_BUFFERSIZE) n = LUAL_BUFFERSIZE - 1;
@@ -1867,9 +1647,9 @@ static int lcw_winnstr(lua_State *L)
 static int lcw_mvwinnstr(lua_State *L)
 {
     WINDOW *w = lcw_check(L, 1);
-    int y = luaL_checkint(L, 2);
-    int x = luaL_checkint(L, 3);
-    int n = luaL_checkint(L, 4);
+    int y = luaL_checkinteger(L, 2);
+    int x = luaL_checkinteger(L, 3);
+    int n = luaL_checkinteger(L, 4);
     char buf[LUAL_BUFFERSIZE];
 
     if (n >= LUAL_BUFFERSIZE) n = LUAL_BUFFERSIZE - 1;
@@ -1889,18 +1669,18 @@ static int lcw_mvwinnstr(lua_State *L)
 static int lcw_winsch(lua_State *L)
 {
     WINDOW *w = lcw_check(L, 1);
-    chtype ch = lc_checkch(L, 2);
-    lua_pushboolean(L, B(winsch(w, ch)));
+    cchar_t ch = lc_checkch(L, 2);
+    lua_pushboolean(L, B(win_wch(w, &ch)));
     return 1;
 }
 
 static int lcw_mvwinsch(lua_State *L)
 {
     WINDOW *w = lcw_check(L, 1);
-    int y = luaL_checkint(L, 2);
-    int x = luaL_checkint(L, 3);
-    chtype ch = lc_checkch(L, 4);
-    lua_pushboolean(L, B(mvwinsch(w, y, x, ch)));
+    int y = luaL_checkinteger(L, 2);
+    int x = luaL_checkinteger(L, 3);
+    cchar_t ch = lc_checkch(L, 4);
+    lua_pushboolean(L, B(mvwin_wch(w, y, x, &ch)));
     return 1;
 }
 
@@ -1915,18 +1695,18 @@ static int lcw_winsstr(lua_State *L)
     WINDOW *w = lcw_check(L, 1);
     size_t len;
     const char *str = luaL_checklstring(L, 2, &len);
-    lua_pushboolean(L, B(winsnstr(w, CCHAR_CAST str, len)));
+    lua_pushboolean(L, B(winsnstr(w, str, len)));
     return 1;
 }
 
 static int lcw_mvwinsstr(lua_State *L)
 {
     WINDOW *w = lcw_check(L, 1);
-    int y = luaL_checkint(L, 2);
-    int x = luaL_checkint(L, 3);
+    int y = luaL_checkinteger(L, 2);
+    int x = luaL_checkinteger(L, 3);
     size_t len;
     const char *str = luaL_checklstring(L, 4, &len);
-    lua_pushboolean(L, B(mvwinsnstr(w, y, x, CCHAR_CAST str, len)));
+    lua_pushboolean(L, B(mvwinsnstr(w, y, x, str, len)));
     return 1;
 }
 
@@ -1934,19 +1714,19 @@ static int lcw_winsnstr(lua_State *L)
 {
     WINDOW *w = lcw_check(L, 1);
     const char *str = luaL_checkstring(L, 2);
-    int n = luaL_checkint(L, 3);
-    lua_pushboolean(L, B(winsnstr(w, CCHAR_CAST str, n)));
+    int n = luaL_checkinteger(L, 3);
+    lua_pushboolean(L, B(winsnstr(w, str, n)));
     return 1;
 }
 
 static int lcw_mvwinsnstr(lua_State *L)
 {
     WINDOW *w = lcw_check(L, 1);
-    int y = luaL_checkint(L, 2);
-    int x = luaL_checkint(L, 3);
+    int y = luaL_checkinteger(L, 2);
+    int x = luaL_checkinteger(L, 3);
     const char *str = luaL_checkstring(L, 4);
-    int n = luaL_checkint(L, 5);
-    lua_pushboolean(L, B(mvwinsnstr(w, y, x, CCHAR_CAST str, n)));
+    int n = luaL_checkinteger(L, 5);
+    lua_pushboolean(L, B(mvwinsnstr(w, y, x, str, n)));
     return 1;
 }
 
@@ -1958,8 +1738,8 @@ static int lcw_mvwinsnstr(lua_State *L)
 
 static int lc_newpad(lua_State *L)
 {
-    int nlines = luaL_checkint(L, 1);
-    int ncols = luaL_checkint(L, 2);
+    int nlines = luaL_checkinteger(L, 1);
+    int ncols = luaL_checkinteger(L, 2);
     lcw_new(L, newpad(nlines, ncols));
     return 1;
 }
@@ -1967,10 +1747,10 @@ static int lc_newpad(lua_State *L)
 static int lcw_subpad(lua_State *L)
 {
     WINDOW *orig = lcw_check(L, 1);
-    int nlines  = luaL_checkint(L, 2);
-    int ncols   = luaL_checkint(L, 3);
-    int begin_y = luaL_checkint(L, 4);
-    int begin_x = luaL_checkint(L, 5);
+    int nlines  = luaL_checkinteger(L, 2);
+    int ncols   = luaL_checkinteger(L, 3);
+    int begin_y = luaL_checkinteger(L, 4);
+    int begin_x = luaL_checkinteger(L, 5);
 
     lcw_new(L, subpad(orig, nlines, ncols, begin_y, begin_x));
     return 1;
@@ -1979,12 +1759,12 @@ static int lcw_subpad(lua_State *L)
 static int lcw_prefresh(lua_State *L)
 {
     WINDOW *p = lcw_check(L, 1);
-    int pminrow = luaL_checkint(L, 2);
-    int pmincol = luaL_checkint(L, 3);
-    int sminrow = luaL_checkint(L, 4);
-    int smincol = luaL_checkint(L, 5);
-    int smaxrow = luaL_checkint(L, 6);
-    int smaxcol = luaL_checkint(L, 7);
+    int pminrow = luaL_checkinteger(L, 2);
+    int pmincol = luaL_checkinteger(L, 3);
+    int sminrow = luaL_checkinteger(L, 4);
+    int smincol = luaL_checkinteger(L, 5);
+    int smaxrow = luaL_checkinteger(L, 6);
+    int smaxcol = luaL_checkinteger(L, 7);
 
     lua_pushboolean(L, B(prefresh(p, pminrow, pmincol,
         sminrow, smincol, smaxrow, smaxcol)));
@@ -1994,12 +1774,12 @@ static int lcw_prefresh(lua_State *L)
 static int lcw_pnoutrefresh(lua_State *L)
 {
     WINDOW *p = lcw_check(L, 1);
-    int pminrow = luaL_checkint(L, 2);
-    int pmincol = luaL_checkint(L, 3);
-    int sminrow = luaL_checkint(L, 4);
-    int smincol = luaL_checkint(L, 5);
-    int smaxrow = luaL_checkint(L, 6);
-    int smaxcol = luaL_checkint(L, 7);
+    int pminrow = luaL_checkinteger(L, 2);
+    int pmincol = luaL_checkinteger(L, 3);
+    int sminrow = luaL_checkinteger(L, 4);
+    int smincol = luaL_checkinteger(L, 5);
+    int smaxrow = luaL_checkinteger(L, 6);
+    int smaxcol = luaL_checkinteger(L, 7);
 
     lua_pushboolean(L, B(pnoutrefresh(p, pminrow, pmincol,
         sminrow, smincol, smaxrow, smaxcol)));
@@ -2010,9 +1790,9 @@ static int lcw_pnoutrefresh(lua_State *L)
 static int lcw_pechochar(lua_State *L)
 {
     WINDOW *p = lcw_check(L, 1);
-    chtype ch = lc_checkch(L, 2);
+    cchar_t ch = lc_checkch(L, 2);
 
-    lua_pushboolean(L, B(pechochar(p, ch)));
+    lua_pushboolean(L, B(pecho_wchar(p, &ch)));
     return 1;
 }
 
@@ -2025,7 +1805,7 @@ static int lcw_pechochar(lua_State *L)
 static int lcw_wattroff(lua_State *L)
 {
     WINDOW *w = lcw_check(L, 1);
-    int attrs = luaL_checkint(L, 2);
+    int attrs = luaL_checkinteger(L, 2);
     lua_pushboolean(L, B(wattroff(w, attrs)));
     return 1;
 }
@@ -2033,7 +1813,7 @@ static int lcw_wattroff(lua_State *L)
 static int lcw_wattron(lua_State *L)
 {
     WINDOW *w = lcw_check(L, 1);
-    int attrs = luaL_checkint(L, 2);
+    int attrs = luaL_checkinteger(L, 2);
     lua_pushboolean(L, B(wattron(w, attrs)));
     return 1;
 }
@@ -2041,7 +1821,7 @@ static int lcw_wattron(lua_State *L)
 static int lcw_wattrset(lua_State *L)
 {
     WINDOW *w = lcw_check(L, 1);
-    int attrs = luaL_checkint(L, 2);
+    int attrs = luaL_checkinteger(L, 2);
     lua_pushboolean(L, B(wattrset(w, attrs)));
     return 1;
 }
@@ -2258,7 +2038,6 @@ static const luaL_Reg curseslib[] =
 {
     /* chstr helper function */
     { "new_chstr",      lc_new_chstr    },
-    { "map_output",     lc_map_output   },
 
     /* keyboard mapping */
     { "map_keyboard",   lc_map_keyboard },
@@ -2397,147 +2176,9 @@ int luaopen_lcurses(lua_State *L)
     luaL_newlib(L, chstrlib);
     lua_setfield(L, -2, "__index");
 
-    /* 上面的几个元表被自动丢弃 */
-
     luaL_newlibtable(L, curseslib);
     lua_pushvalue(L, -1);
     luaL_setfuncs(L, curseslib, 1);
 
     return 1;
 }
-
-
-/* initialize the character map table with the known values after
-** curses initialization (for ACS_xxx values) */
-static void init_ascii_map()
-{
-    ascii_map[  0] = 32;            ascii_map[  1] = 79;
-    ascii_map[  2] = 79;            ascii_map[  3] = 111;
-    ascii_map[  4] = ACS_DIAMOND;   ascii_map[  5] = 111;
-    ascii_map[  6] = 111;           ascii_map[  7] = 111;
-    ascii_map[  8] = 111;           ascii_map[  9] = 111;
-    ascii_map[ 10] = 111;           ascii_map[ 11] = 111;
-    ascii_map[ 12] = 33;            ascii_map[ 13] = 33;
-    ascii_map[ 14] = 33;            ascii_map[ 15] = 42;
-    ascii_map[ 16] = ACS_RARROW;    ascii_map[ 17] = ACS_LARROW;
-    ascii_map[ 18] = 124;           ascii_map[ 19] = 33;
-    ascii_map[ 20] = 33;            ascii_map[ 21] = 79;
-    ascii_map[ 22] = 95;            ascii_map[ 23] = 124;
-    ascii_map[ 24] = ACS_UARROW;    ascii_map[ 25] = ACS_DARROW;
-    ascii_map[ 26] = ACS_RARROW;    ascii_map[ 27] = ACS_LARROW;
-    ascii_map[ 28] = ACS_LLCORNER;  ascii_map[ 29] = 45;
-    ascii_map[ 30] = ACS_UARROW;    ascii_map[ 31] = ACS_DARROW;
-    ascii_map[ 32] = 32;            ascii_map[ 33] = 33;
-    ascii_map[ 34] = 34;            ascii_map[ 35] = 35;
-    ascii_map[ 36] = 36;            ascii_map[ 37] = 37;
-    ascii_map[ 38] = 38;            ascii_map[ 39] = 39;
-    ascii_map[ 40] = 40;            ascii_map[ 41] = 41;
-    ascii_map[ 42] = 42;            ascii_map[ 43] = 43;
-    ascii_map[ 44] = 44;            ascii_map[ 45] = 45;
-    ascii_map[ 46] = 46;            ascii_map[ 47] = 47;
-    ascii_map[ 48] = 48;            ascii_map[ 49] = 49;
-    ascii_map[ 50] = 50;            ascii_map[ 51] = 51;
-    ascii_map[ 52] = 52;            ascii_map[ 53] = 53;
-    ascii_map[ 54] = 54;            ascii_map[ 55] = 55;
-    ascii_map[ 56] = 56;            ascii_map[ 57] = 57;
-    ascii_map[ 58] = 58;            ascii_map[ 59] = 59;
-    ascii_map[ 60] = 60;            ascii_map[ 61] = 61;
-    ascii_map[ 62] = 62;            ascii_map[ 63] = 63;
-    ascii_map[ 64] = 64;            ascii_map[ 65] = 65;
-    ascii_map[ 66] = 66;            ascii_map[ 67] = 67;
-    ascii_map[ 68] = 68;            ascii_map[ 69] = 69;
-    ascii_map[ 70] = 70;            ascii_map[ 71] = 71;
-    ascii_map[ 72] = 72;            ascii_map[ 73] = 73;
-    ascii_map[ 74] = 74;            ascii_map[ 75] = 75;
-    ascii_map[ 76] = 76;            ascii_map[ 77] = 77;
-    ascii_map[ 78] = 78;            ascii_map[ 79] = 79;
-    ascii_map[ 80] = 80;            ascii_map[ 81] = 81;
-    ascii_map[ 82] = 82;            ascii_map[ 83] = 83;
-    ascii_map[ 84] = 84;            ascii_map[ 85] = 85;
-    ascii_map[ 86] = 86;            ascii_map[ 87] = 87;
-    ascii_map[ 88] = 88;            ascii_map[ 89] = 89;
-    ascii_map[ 90] = 90;            ascii_map[ 91] = 91;
-    ascii_map[ 92] = 92;            ascii_map[ 93] = 93;
-    ascii_map[ 94] = 94;            ascii_map[ 95] = 95;
-    ascii_map[ 96] = 96;            ascii_map[ 97] = 97;
-    ascii_map[ 98] = 98;            ascii_map[ 99] = 99;
-    ascii_map[100] = 100;           ascii_map[101] = 101;
-    ascii_map[102] = 102;           ascii_map[103] = 103;
-    ascii_map[104] = 104;           ascii_map[105] = 105;
-    ascii_map[106] = 106;           ascii_map[107] = 107;
-    ascii_map[108] = 108;           ascii_map[109] = 109;
-    ascii_map[110] = 110;           ascii_map[111] = 111;
-    ascii_map[112] = 112;           ascii_map[113] = 113;
-    ascii_map[114] = 114;           ascii_map[115] = 115;
-    ascii_map[116] = 116;           ascii_map[117] = 117;
-    ascii_map[118] = 118;           ascii_map[119] = 119;
-    ascii_map[120] = 120;           ascii_map[121] = 121;
-    ascii_map[122] = 122;           ascii_map[123] = 123;
-    ascii_map[124] = 124;           ascii_map[125] = 125;
-    ascii_map[126] = 126;           ascii_map[127] = 100;
-    ascii_map[128] = 99;            ascii_map[129] = 117;
-    ascii_map[130] = 101;           ascii_map[131] = 97;
-    ascii_map[132] = 97;            ascii_map[133] = 97;
-    ascii_map[134] = 97;            ascii_map[135] = 99;
-    ascii_map[136] = 101;           ascii_map[137] = 101;
-    ascii_map[138] = 101;           ascii_map[139] = 105;
-    ascii_map[140] = 105;           ascii_map[141] = 105;
-    ascii_map[142] = 97;            ascii_map[143] = 97;
-    ascii_map[144] = 101;           ascii_map[145] = 97;
-    ascii_map[146] = 102;           ascii_map[147] = 111;
-    ascii_map[148] = 111;           ascii_map[149] = 111;
-    ascii_map[150] = 117;           ascii_map[151] = 117;
-    ascii_map[152] = 121;           ascii_map[153] = 79;
-    ascii_map[154] = 85;            ascii_map[155] = 99;
-    ascii_map[156] = 76;            ascii_map[157] = 89;
-    ascii_map[158] = 80;            ascii_map[159] = 102;
-    ascii_map[160] = 97;            ascii_map[161] = 105;
-    ascii_map[162] = 111;           ascii_map[163] = 117;
-    ascii_map[164] = 110;           ascii_map[165] = 78;
-    ascii_map[166] = 45;            ascii_map[167] = 45;
-    ascii_map[168] = 63;            ascii_map[169] = ACS_ULCORNER;
-    ascii_map[170] = ACS_URCORNER;  ascii_map[171] = 47;
-    ascii_map[172] = 47;            ascii_map[173] = 33;
-    ascii_map[174] = ACS_LARROW;    ascii_map[175] = ACS_RARROW;
-    ascii_map[176] = ACS_BOARD;     ascii_map[177] = ACS_CKBOARD;
-    ascii_map[178] = ACS_CKBOARD;   ascii_map[179] = ACS_VLINE;
-    ascii_map[180] = ACS_RTEE;      ascii_map[181] = ACS_RTEE;
-    ascii_map[182] = ACS_RTEE;      ascii_map[183] = ACS_URCORNER;
-    ascii_map[184] = ACS_URCORNER;  ascii_map[185] = ACS_RTEE;
-    ascii_map[186] = ACS_VLINE;     ascii_map[187] = ACS_URCORNER;
-    ascii_map[188] = ACS_LRCORNER;  ascii_map[189] = ACS_LRCORNER;
-    ascii_map[190] = ACS_LRCORNER;  ascii_map[191] = ACS_URCORNER;
-    ascii_map[192] = ACS_LLCORNER;  ascii_map[193] = ACS_BTEE;
-    ascii_map[194] = ACS_TTEE;      ascii_map[195] = ACS_LTEE;
-    ascii_map[196] = ACS_HLINE;     ascii_map[197] = ACS_PLUS;
-    ascii_map[198] = ACS_LTEE;      ascii_map[199] = ACS_LTEE;
-    ascii_map[200] = ACS_LLCORNER;  ascii_map[201] = ACS_ULCORNER;
-    ascii_map[202] = ACS_BTEE;      ascii_map[203] = ACS_TTEE;
-    ascii_map[204] = ACS_LTEE;      ascii_map[205] = ACS_HLINE;
-    ascii_map[206] = ACS_PLUS;      ascii_map[207] = ACS_BTEE;
-    ascii_map[208] = ACS_BTEE;      ascii_map[209] = ACS_TTEE;
-    ascii_map[210] = ACS_TTEE;      ascii_map[211] = ACS_LLCORNER;
-    ascii_map[212] = ACS_LLCORNER;  ascii_map[213] = ACS_ULCORNER;
-    ascii_map[214] = ACS_ULCORNER;  ascii_map[215] = ACS_PLUS;
-    ascii_map[216] = ACS_PLUS;      ascii_map[217] = ACS_LRCORNER;
-    ascii_map[218] = ACS_ULCORNER;  ascii_map[219] = ACS_BLOCK;
-    ascii_map[220] = ACS_BLOCK;     ascii_map[221] = ACS_BLOCK;
-    ascii_map[222] = ACS_BLOCK;     ascii_map[223] = ACS_BLOCK;
-    ascii_map[224] = 97;            ascii_map[225] = 98;
-    ascii_map[226] = 105;           ascii_map[227] = 112;
-    ascii_map[228] = 101;           ascii_map[229] = 111;
-    ascii_map[230] = 117;           ascii_map[231] = 121;
-    ascii_map[232] = 111;           ascii_map[233] = 111;
-    ascii_map[234] = 111;           ascii_map[235] = 111;
-    ascii_map[236] = 111;           ascii_map[237] = 111;
-    ascii_map[238] = 69;            ascii_map[239] = 110;
-    ascii_map[240] = 61;            ascii_map[241] = 43;
-    ascii_map[242] = 62;            ascii_map[243] = 60;
-    ascii_map[244] = 40;            ascii_map[245] = 41;
-    ascii_map[246] = 45;            ascii_map[247] = 61;
-    ascii_map[248] = ACS_DEGREE;    ascii_map[249] = 46;
-    ascii_map[250] = 46;            ascii_map[251] = 86;
-    ascii_map[252] = 110;           ascii_map[253] = 50;
-    ascii_map[254] = ACS_BULLET;    ascii_map[255] = 32;
-}
-

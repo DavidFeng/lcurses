@@ -220,8 +220,8 @@ static int lcp_replace_panel(lua_State *L)
 static int lcp_move_panel(lua_State *L)
 {
     PANEL *p = lcp_check(L, 1);
-    int starty = luaL_checkint(L, 2);
-    int startx = luaL_checkint(L, 3);
+    int starty = luaL_checkinteger(L, 2);
+    int startx = luaL_checkinteger(L, 3);
 
     lua_pushboolean(L, B(move_panel(p, starty, startx)));
     return 1;

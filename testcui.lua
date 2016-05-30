@@ -1,6 +1,6 @@
 os.setlocale('', 'all')
 
-curses = require('lcurses')
+local curses = require('lcurses')
 require 'cui'
 require 'cui/ctrls'
 
@@ -39,8 +39,7 @@ function myview:draw_window()
         w:mvaddchstr(l, 0, line)
     end
     w:attrset(attr)
-    --w:mvaddstr(0, 0, self.str)
-    w:mvaddstr(0, 0, '你好世界')
+    w:mvaddstr(0, 0, self.str)
 end
 
 function myview:handle_event(event)
@@ -189,7 +188,7 @@ function myapp:myapp()
 
 ---[[
     local r = cui.trect:new(1, 1, 27, 10)
-    desk:insert(cui.twindow:new(r, '你好世界Window 1', 1))
+    desk:insert(cui.twindow:new(r, 'Window 1', 1))
     r:move(2, 2) desk:insert(cui.twindow:new(r, 'Window 2', 2))
     r:move(2, 2) desk:insert(cui.twindow:new(r, 'Window 3', 3))
     r:move(2, 2) desk:insert(cui.twindow:new(r, 'Window 4', 4))

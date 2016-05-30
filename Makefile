@@ -11,7 +11,7 @@ CC = gcc
 
 # no need to change anything below here
 SHFLAGS= -shared
-CFLAGS= -std=gnu99 $(INCS) $(DEFS) $(WARN) $(SHFLAGS) -O2 -fPIC
+CFLAGS= -std=gnu99 -g $(INCS) $(DEFS) $(WARN) $(SHFLAGS) -O2 -fPIC
 DEFS=
 WARN= -Wall
 INCS= -I$(LUAINC)
@@ -59,6 +59,9 @@ $T:	$(OBJS)
 	$(CC) $(SHFLAGS) -o $@  $(OBJS) $(LIBS)
 
 lcurses.o: lcurses.c lpanel.c
+
+c :
+	gcc -std=c99 -I/home/david/david/skynet/3rd/lua  c.c -L/home/david/david/skynet/3rd/lua -llua -ldl -lm
 
 clean:
 	rm -f $(OBJS) $T core core.* a.out

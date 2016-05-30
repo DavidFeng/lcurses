@@ -1447,7 +1447,6 @@ function tprogram:tprogram()
     _cui.echo(false)
     _cui.cbreak(true)
     _cui.nl(false)
-    _cui.map_output(true)
     _cui.map_keyboard(true)
     if (_cui.has_colors()) then _cui.start_color() end
     init_keymap()
