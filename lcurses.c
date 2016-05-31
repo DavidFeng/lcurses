@@ -263,7 +263,8 @@ static int chstr_set_str(lua_State *L) {
   lua_getglobal(L, "utf8");
   lua_getfield(L, -1, "codes");
   lua_remove(L, -2); // remove global utf8
-  lua_pushvalue(L, n);
+  lua_pushvalue(L, 3);
+
   lua_call(L, 1, LUA_MULTRET);
   while (1) {
     lua_pushvalue(L, -3);
@@ -278,8 +279,9 @@ static int chstr_set_str(lua_State *L) {
     } else {
       int c = lua_tointeger(L, -1);
       cs->str[i].chars[0] = c;
+      //cs->str[i].chars[0] = 'A';
       cs->str[i++].attr = attr;
-      lua_remove(L, -1);
+      lua_pop(L, 1);
     }
   }
 
@@ -1151,7 +1153,6 @@ static int lcw_mvwaddchnstr(lua_State *L)
         n = cs->len;
 
     lua_pushboolean(L, B(mvwadd_wchnstr(w, y, x, cs->str, n)));
-    // debug here
     return 1;
 }
 
@@ -1883,7 +1884,6 @@ static const luaL_Reg chstrlib[] =
     { NULL, NULL }
 };
 
-#define EWF(name) { #name, lcw_ ## name },
 static const luaL_Reg windowlib[] =
 {
     /* window */
@@ -1899,27 +1899,27 @@ static const luaL_Reg windowlib[] =
     { "cursyncup", lcw_wcursyncup },
 
     /* inopts */
-    EWF(intrflush)
-    EWF(keypad)
-    EWF(meta)
-    EWF(nodelay)
-    EWF(timeout)
-    EWF(notimeout)
+    { "intrflush", lcw_intrflush },
+    { "keypad", lcw_keypad },
+    { "meta", lcw_meta },
+    { "nodelay", lcw_nodelay },
+    { "timeout", lcw_timeout },
+    { "notimeout", lcw_notimeout },
 
     /* outopts */
-    EWF(clearok)
-    EWF(idlok)
-    EWF(leaveok)
-    EWF(scrollok)
-    EWF(idcok)
-    EWF(immedok)
-    EWF(wsetscrreg)
+    { "clearok", lcw_clearok },
+    { "idlok", lcw_idlok },
+    { "leaveok", lcw_leaveok },
+    { "scrollok", lcw_scrollok },
+    { "idcok", lcw_idcok },
+    { "immedok", lcw_immedok },
+    { "wsetscrreg", lcw_wsetscrreg },
 
     /* pad */
-    EWF(subpad)
-    EWF(prefresh)
-    EWF(pnoutrefresh)
-    EWF(pechochar)
+    { "subpad", lcw_subpad },
+    { "prefresh", lcw_prefresh },
+    { "pnoutrefresh", lcw_pnoutrefresh },
+    { "pechochar", lcw_pechochar },
 
     /* move */
     { "move", lcw_wmove },
@@ -1957,10 +1957,10 @@ static const luaL_Reg windowlib[] =
     { "mvgetch", lcw_mvwgetch },
 
     /* getyx */
-    EWF(getyx)
-    EWF(getparyx)
-    EWF(getbegyx)
-    EWF(getmaxyx)
+    { "getyx", lcw_getyx },
+    { "getparyx", lcw_getparyx },
+    { "getbegyx", lcw_getbegyx },
+    { "getmaxyx", lcw_getmaxyx },
 
     /* border */
     { "border", lcw_wborder },
@@ -1984,9 +1984,9 @@ static const luaL_Reg windowlib[] =
     { "mvaddstr", lcw_mvwaddnstr },
 
     /* bkgd */
-    EWF(wbkgdset)
-    EWF(wbkgd)
-    EWF(getbkgd)
+    { "wbkgdset", lcw_wbkgdset },
+    { "wbkgd", lcw_wbkgd },
+    { "getbkgd", lcw_getbkgd },
 
     /* overlay */
     { "overlay", lcw_overlay },
@@ -2000,31 +2000,31 @@ static const luaL_Reg windowlib[] =
     /* deleteln */
     { "delete_line", lcw_wdeleteln },
     { "insert_line", lcw_winsertln },
-    EWF(winsdelln)
+    { "winsdelln", lcw_winsdelln },
 
     /* getstr */
     { "getstr", lcw_wgetnstr },
     { "mvgetstr", lcw_mvwgetnstr },
 
     /* inch */
-    EWF(winch)
-    EWF(mvwinch)
-    EWF(winchnstr)
-    EWF(mvwinchnstr)
+    { "winch", lcw_winch },
+    { "mvwinch", lcw_mvwinch },
+    { "winchnstr", lcw_winchnstr },
+    { "mvwinchnstr", lcw_mvwinchnstr },
 
     /* instr */
-    EWF(winnstr)
-    EWF(mvwinnstr)
+    { "winnstr", lcw_winnstr },
+    { "mvwinnstr", lcw_mvwinnstr },
 
     /* insch */
-    EWF(winsch)
-    EWF(mvwinsch)
+    { "winsch", lcw_winsch },
+    { "mvwinsch", lcw_mvwinsch },
 
     /* insstr */
-    EWF(winsstr)
-    EWF(winsnstr)
-    EWF(mvwinsstr)
-    EWF(mvwinsnstr)
+    { "winsstr", lcw_winsstr },
+    { "winsnstr", lcw_winsnstr },
+    { "mvwinsstr", lcw_mvwinsstr },
+    { "mvwinsnstr", lcw_mvwinsnstr },
 
     /* misc */
     {"__gc",        lcw_delwin  }, /* rough safety net */

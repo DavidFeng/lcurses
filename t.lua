@@ -1,29 +1,7 @@
---os.setlocale('en_US.UTF-8', 'all')
 os.setlocale('', 'all')
-
-package.cpath ='./?.so'
 
 curses = require('lcurses')
 local is = require 'inspect'
-
-local function main()
-
-  curses.slk_init(2)
-  curses.init()
-  local p = curses.new_panel(curses.main_window())
-  curses.done()
-
-  local mt = debug.getmetatable(p)
-  print('panel meta is: ', is(mt))
-
-  return print(is(curses))
-end
-
-local ok, r = xpcall(main, debug.traceback)
-print(ok, r)
-if true then
-  return
-end
 
 curses.slk_init(2)
 
@@ -45,12 +23,7 @@ local function _main()
     curses.doupdate()
 
     curses.echo(false)
-    -- [[
-    repeat
-      c = main:getch()
-      curses.napms(50)
-    until (c)
-    --]]
+    main:getch()
 
     -- clear the screen for terminals that don't restore the screen
     main:clear()
@@ -62,7 +35,4 @@ end
 
 local ok, msg = xpcall(_main, debug.traceback)
 curses.done()
-
-if not ok then
-    print(msg)
-end
+if not ok then print(msg) end

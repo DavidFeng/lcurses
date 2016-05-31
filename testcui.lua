@@ -188,9 +188,9 @@ function myapp:myapp()
 
 ---[[
     local r = cui.trect:new(1, 1, 27, 10)
-    desk:insert(cui.twindow:new(r, 'Window 1', 1))
-    r:move(2, 2) desk:insert(cui.twindow:new(r, 'Window 2', 2))
-    r:move(2, 2) desk:insert(cui.twindow:new(r, 'Window 3', 3))
+    desk:insert(cui.twindow:new(r, 'Window 中文1', 1))
+    r:move(2, 2) desk:insert(cui.twindow:new(r, 'Window 中文2', 2))
+    r:move(2, 2) desk:insert(cui.twindow:new(r, 'Window 世界3', 3))
     r:move(2, 2) desk:insert(cui.twindow:new(r, 'Window 4', 4))
     r:move(2, 2) desk:insert(cui.twindow:new(r, 'Window 5', 5))
     r:move(5, 5) desk:insert(mywindow:new(r, 'Window 6', 6))

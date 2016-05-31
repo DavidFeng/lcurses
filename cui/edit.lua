@@ -83,28 +83,14 @@ function tedit:draw_window()
     local nattr = self.ncolor
     local sattr = self.scolor
 
+    --[[
     if (self.size.x > 0) then
         line:set_ch(0, self.start == 0 and ' ' or _cui.ACS_LARROW, nattr)
         line:set_ch(self.size.x - 1, (self.start + self.size.x - 2 >= len) and ' ' or _cui.ACS_RARROW, nattr)
     end
-
-    for i = 1, self.size.x - 2 do
-        local idx = i + start
-        if (idx <= len) then
-            local ch = string.sub(text, idx, idx)
-
-            if (idx >= ss and idx < es) then
-                line:set_str(i, ch, sattr)
-            else
-                line:set_str(i, ch, nattr)
-            end
-        else
-            line:set_ch(i, ' ', nattr)
-        end
-    end
-
-    --self:window():mvaddchstr(0, 0, line)
-    self:window():mvaddstr(0, 0, 'hello 你好世界')
+    --]]
+    line:set_str(0, text, nattr)
+    self:window():mvaddchstr(0, 0, line)
 end
 
 function tedit:handle_event(event)
