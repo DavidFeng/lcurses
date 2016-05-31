@@ -40,8 +40,15 @@ int main()
   mvprintw(row-2,0,"你好世界This screen has %d rows and %d columns\n",row,col);
   printw("Try resizing your window(if possible) and then run this program again");
   refresh();
+
+  char buf[32];
+  getnstr(buf, 32);
+
+
   getch();
   endwin();
+  printf("buf: %s\n", buf);
+
   printf("setlocale return: %s\n", r);
 
   wchar_t c1 = L'中';

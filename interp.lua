@@ -1,3 +1,5 @@
+os.setlocale('', 'all')
+
 curses = require 'lcurses'
 
 local lprint = print
@@ -26,21 +28,22 @@ local function _main_fun()
   w_out:mvhline(0, 0, curses.ACS_HLINE, columns)
   w_out:move(1, 0)
 
-  function print(...)
-    local arg = table.pack(...)
-    for i = 1, arg.n do
-      w_out:addstr(tostring(arg[i])..'\t')
-    end
-    w_out:addstr('\n')
+  function print(r)
+    local y, x = w_out:getyx()
+    w_out:move(y + 1, 0)
+    w_out:addstr(r)
   end
 
-
   local y, x, cmd, ok, msg
-  while (1) do
-      y, x = w_in:getyx() w_in:move(y, x) w_in:refresh()
+  while true do
+      y, x = w_in:getyx()
+      w_in:move(y, x)
+      w_in:refresh()
       cmd = w_in:getstr()
+
       print('>'..cmd)
-      if (cmd == 'exit' or string.byte(cmd, 1, 1) == 4) then break; end
+
+      if (cmd == 'exit' or string.byte(cmd, 1, 1) == 4) then break end
       cmd, msg = load(cmd)
       ok = cmd
       if cmd then ok, msg = pcall(cmd) end

@@ -277,9 +277,7 @@ static int chstr_set_str(lua_State *L) {
       lua_pop(L, 2);
       break;
     } else {
-      int c = lua_tointeger(L, -1);
-      cs->str[i].chars[0] = c;
-      //cs->str[i].chars[0] = 'A';
+      cs->str[i].chars[0] = lua_tointeger(L, -1);
       cs->str[i++].attr = attr;
       lua_pop(L, 1);
     }
@@ -1164,15 +1162,42 @@ static int lcw_mvwaddchnstr(lua_State *L)
 
 static int lcw_waddnstr(lua_State *L)
 {
-    WINDOW *w = lcw_check(L, 1);
-    size_t len;
-    const char *str = luaL_checklstring(L, 2, &len);
-    int n = luaL_optinteger(L, 3, -1);
+  WINDOW *w = lcw_check(L, 1);
 
-    if (n < 0) n = len;
+  lua_Integer max_len = luaL_len(L, 2);
 
-    lua_pushboolean(L, B(waddnstr(w, str, n)));
-    return 1;
+  cchar_t * str = malloc(sizeof(*str) * max_len);
+  memset(str, 0, sizeof(*str) * max_len);
+
+  int i = 0;
+  int n = lua_gettop(L);
+  lua_getglobal(L, "utf8");
+  lua_getfield(L, -1, "codes");
+  lua_remove(L, -2); // remove global utf8
+  lua_pushvalue(L, 2);
+
+  lua_call(L, 1, LUA_MULTRET);
+  while (1) {
+    lua_pushvalue(L, -3);
+    lua_insert(L, -3);
+    lua_pushvalue(L, -2);
+    lua_insert(L, -4);
+
+    lua_call(L, 2, LUA_MULTRET);
+    if (lua_gettop(L) == n + 2) {
+      lua_pop(L, 2);
+      break;
+    } else {
+      str[i].chars[0] = lua_tointeger(L, -1);
+      str[i++].attr = A_NORMAL;
+
+      lua_pop(L, 1);
+    }
+  }
+
+  lua_pushboolean(L, B(wadd_wchnstr(w, str, i)));
+  free(str);
+  return 1;
 }
 
 static int lcw_mvwaddnstr(lua_State *L)
@@ -1541,6 +1566,7 @@ static int lcw_wgetnstr(lua_State *L)
     WINDOW *w = lcw_check(L, 1);
     int n = luaL_optinteger(L, 2, 0);
     char buf[LUAL_BUFFERSIZE];
+    memset(buf, 0, LUAL_BUFFERSIZE);
 
     if (n == 0 || n >= LUAL_BUFFERSIZE) n = LUAL_BUFFERSIZE - 1;
     if (wgetnstr(w, buf, n) == ERR)
@@ -1612,6 +1638,7 @@ static int lcw_mvwinchnstr(lua_State *L)
     int y = luaL_checkinteger(L, 2);
     int x = luaL_checkinteger(L, 3);
     int n = luaL_checkinteger(L, 4);
+
     chstr *cs = chstr_new(L, n);
 
     wchar_t *ws = malloc(sizeof(wchar_t) * n);
@@ -1619,7 +1646,9 @@ static int lcw_mvwinchnstr(lua_State *L)
       *ws++ = cs->str[i].chars[0];
     }
 
-    if (mvwins_nwstr(w, y, x, ws, n) == ERR)
+    int r = mvwins_nwstr(w, y, x, ws, n);
+    free(ws);
+    if (r == ERR)
         return 0;
 
     return 1;
