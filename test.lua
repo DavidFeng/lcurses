@@ -6,7 +6,7 @@ curses = require('lcurses')
 
 local _topw = {}
 local top_lines = 10
-curses.slk_init(2)
+curses.slk_init(3)
 
 local rip =    function(w, columns)
         table.insert(_topw, w)
@@ -30,10 +30,13 @@ local function _main()
     assert(main == curses.main_window())
 
     -- labels
-    curses.slk_set(1, 'lbl-1', 0)
+    curses.slk_set(1, '你好世', 0)
+    curses.slk_set(2, 'App', 1)
+    curses.slk_set(3, '世界', 1)
+    curses.slk_set(4, '你好', 1)
     curses.slk_noutrefresh()
     curses.slk_attron(curses.A_BLINK)
-    curses.slk_set(5, '<', 0)
+    curses.slk_set(5, '<', 1)
     curses.slk_set(6, '-', 1)
     curses.slk_set(7, '-', 1)
     curses.slk_set(8, '>', 2)
